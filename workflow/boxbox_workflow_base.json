@@ -1,0 +1,569 @@
+{
+  "id": "4c31b03e-5e19-4ccd-9ade-888246f29757",
+  "revision": 0,
+  "last_node_id": 14,
+  "last_link_id": 14,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "PreviewImage",
+      "pos": [
+        205.82087937247496,
+        1360.5710649994812
+      ],
+      "size": [
+        391.8921446190235,
+        268.0113707768944
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 1
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.67",
+        "Node name for S&R": "PreviewImage",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 6,
+      "type": "PreviewImage",
+      "pos": [
+        640.9578224623313,
+        1355.6134351570527
+      ],
+      "size": [
+        284.870811785642,
+        278.355607626602
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 10
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.67",
+        "Node name for S&R": "PreviewImage",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 9,
+      "type": "PreviewImage",
+      "pos": [
+        -305.8609506633233,
+        1374.2721754457914
+      ],
+      "size": [
+        320.1991807163989,
+        280.73896614307614
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 12
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.67",
+        "Node name for S&R": "PreviewImage",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 2,
+      "type": "BoxReinsert",
+      "pos": [
+        1376.7227630321622,
+        1047.1246719065819
+      ],
+      "size": [
+        270,
+        102
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "original_image",
+          "type": "IMAGE",
+          "link": 2
+        },
+        {
+          "name": "generated_image",
+          "type": "IMAGE",
+          "link": 3
+        },
+        {
+          "name": "box_metadata",
+          "type": "STRING",
+          "widget": {
+            "name": "box_metadata"
+          },
+          "link": 4
+        },
+        {
+          "name": "resize_metadata",
+          "type": "STRING",
+          "widget": {
+            "name": "resize_metadata"
+          },
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            6
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "mercu-lore/BoxBox",
+        "ver": "c76f9d96d0eb07548e0958ef6a4cff0c67994e6b",
+        "Node name for S&R": "BoxReinsert",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "",
+        ""
+      ]
+    },
+    {
+      "id": 4,
+      "type": "ColorCorrect",
+      "pos": [
+        1355.8556028772218,
+        1355.1867977519976
+      ],
+      "size": [
+        270,
+        178
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            3
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-post-processing-nodes",
+        "ver": "c49a05254795403648f2c1774b6f5ea39f96e7d5",
+        "Node name for S&R": "ColorCorrect",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        100,
+        0,
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "id": 5,
+      "type": "BoxCrop",
+      "pos": [
+        168.3552973892401,
+        1102.2218733657019
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 8
+        },
+        {
+          "name": "box_metadata",
+          "type": "STRING",
+          "widget": {
+            "name": "box_metadata"
+          },
+          "link": 14
+        }
+      ],
+      "outputs": [
+        {
+          "name": "cropped_image",
+          "type": "IMAGE",
+          "links": [
+            1,
+            11
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "mercu-lore/BoxBox",
+        "ver": "c76f9d96d0eb07548e0958ef6a4cff0c67994e6b",
+        "Node name for S&R": "BoxCrop",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "{\"x1\":355,\"y1\":235,\"x2\":1103,\"y2\":541,\"borderWidth\":0,\"borderPosition\":\"inside\",\"selected\":true}",
+        "use_full_image"
+      ]
+    },
+    {
+      "id": 7,
+      "type": "BoxResize",
+      "pos": [
+        780.6470221052576,
+        1111.8811489891837
+      ],
+      "size": [
+        270,
+        174
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            7,
+            10
+          ]
+        },
+        {
+          "name": "resize_metadata",
+          "type": "STRING",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "mercu-lore/BoxBox",
+        "ver": "c76f9d96d0eb07548e0958ef6a4cff0c67994e6b",
+        "Node name for S&R": "BoxResize",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "1:1 Square 1024x1024",
+        true,
+        "bilinear",
+        1024,
+        1024
+      ]
+    },
+    {
+      "id": 10,
+      "type": "BoxSelector",
+      "pos": [
+        -351.67469361414777,
+        1103.683616993649
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 13
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            8
+          ]
+        },
+        {
+          "name": "box_metadata",
+          "type": "STRING",
+          "links": [
+            4,
+            14
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "mercu-lore/BoxBox",
+        "ver": "c76f9d96d0eb07548e0958ef6a4cff0c67994e6b",
+        "Node name for S&R": "BoxSelector",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "{\"x1\":265,\"y1\":361,\"x2\":468,\"y2\":568,\"borderWidth\":0,\"borderPosition\":\"inside\",\"displayScaleFactor\":0.8421052631578947,\"selected\":true}",
+        ""
+      ]
+    },
+    {
+      "id": 3,
+      "type": "PreviewImage",
+      "pos": [
+        1714.509618062676,
+        1007.9719033070364
+      ],
+      "size": [
+        467.94312198875866,
+        471.6109339226517
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 6
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.67",
+        "Node name for S&R": "PreviewImage",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 8,
+      "type": "LoadImage",
+      "pos": [
+        -925.5055219627318,
+        1065.9731798322127
+      ],
+      "size": [
+        274.080078125,
+        314.0000000000001
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            2,
+            12,
+            13
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.67",
+        "Node name for S&R": "LoadImage",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "posa_02.png",
+        "image"
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      5,
+      0,
+      1,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      8,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      4,
+      0,
+      2,
+      1,
+      "IMAGE"
+    ],
+    [
+      4,
+      10,
+      1,
+      2,
+      2,
+      "STRING"
+    ],
+    [
+      5,
+      7,
+      1,
+      2,
+      3,
+      "STRING"
+    ],
+    [
+      6,
+      2,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      7,
+      7,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      8,
+      10,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      10,
+      7,
+      0,
+      6,
+      0,
+      "IMAGE"
+    ],
+    [
+      11,
+      5,
+      0,
+      7,
+      0,
+      "IMAGE"
+    ],
+    [
+      12,
+      8,
+      0,
+      9,
+      0,
+      "IMAGE"
+    ],
+    [
+      13,
+      8,
+      0,
+      10,
+      0,
+      "IMAGE"
+    ],
+    [
+      14,
+      10,
+      1,
+      5,
+      1,
+      "STRING"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Image_ref",
+      "bounding": [
+        -545.3702846025856,
+        1035.6208635524254,
+        1850.1591380252148,
+        664.6136676839826
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ue_links": [],
+    "ds": {
+      "scale": 0.7972024500000009,
+      "offset": [
+        1041.8207715573506,
+        -574.3651698202073
+      ]
+    },
+    "links_added_by_ue": [],
+    "frontendVersion": "1.28.8",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}
