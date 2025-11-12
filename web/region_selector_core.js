@@ -1,584 +1,585 @@
 /**
- * Region Selector JavaScript - Logica interazione canvas editor
+ * Region Selector JavaScript – versione finale
+ * Gestione immagini grandi, salvataggio /temp, coordinate in scala corretta
  */
-
-// ============================================================================
-// DOM ELEMENTS
-// ============================================================================
 
 const container = document.getElementById('canvas-container');
 const backgroundImage = document.getElementById('background-image');
-const baseCoordinates = document.getElementById('base-coordinates');
-const dimensionsInfo = document.getElementById('dimensions-info');
-const currentDimensions = document.getElementById('current-dimensions');
-const zoomInBtn = document.getElementById('zoom-in-btn');
-const zoomOutBtn = document.getElementById('zoom-out-btn');
-const zoomValue = document.getElementById('zoom-value');
-const borderSlider = document.getElementById('border-slider');
-const borderValue = document.getElementById('border-value');
-const resetBtn = document.getElementById('reset-btn');
-const borderPositionRadios = document.querySelectorAll('input[name="border-position"]');
-const imageUpload = document.getElementById('image-upload');
-const uploadBtn = document.getElementById('upload-btn');
-const imageName = document.getElementById('image-name');
 const confirmBtn = document.getElementById('confirm-btn');
 const cancelBtn = document.getElementById('cancel-btn');
 const closeBtn = document.getElementById('close-btn');
-
-// ============================================================================
-// STATE VARIABLES
-// ============================================================================
+const uploadBtn = document.getElementById('upload-btn');
+const imageUpload = document.getElementById('image-upload');
+const imageName = document.getElementById('image-name');
 
 let isDrawing = false;
-let isResizing = false;
-let resizingEdge = null;
-let startX = 0;
-let startY = 0;
-let rectStartX = 0;
-let rectStartY = 0;
-let rectStartWidth = 0;
-let rectStartHeight = 0;
 let currentRectangle = null;
-let currentZoom = 1;
-let currentBorderWidth = 3;
-let borderPosition = 'inside';
-let rectangleExists = false;
-
-// Coordinate base (senza zoom e bordi)
-let baseWidth = 0;
-let baseHeight = 0;
-let baseX = 0;
-let baseY = 0;
-
-const defaultBorderWidth = 3;
-const zoomStep = 0.25;
-const minZoom = 0.25;
-const maxZoom = 4;
-
-// Callback per comunicazione con il nodo
+let baseX = 0, baseY = 0, baseWidth = 0, baseHeight = 0;
+let imageScale = 1;
 let onConfirmCallback = null;
 let onCancelCallback = null;
+let rectangleExists = false;
+
+// Aspect Ratio Mode
+let aspectRatioMode = "free";        // "free" o ratio specifico (es. "16:9")
+let aspectRatioValue = null;         // Valore numerico (es. 16/9 = 1.777)
+
+// Fix Image Size - tracking dello stato
+let displayScaleFactor = 1.0;  // Fattore di scala applicato alla preview
+let isImageFixed = false;       // True quando immagine è stata "fixata"
 
 // ============================================================================
-// INITIALIZATION
+// INIT
 // ============================================================================
+document.addEventListener('DOMContentLoaded', () => {
+  uploadBtn.addEventListener('click', () => imageUpload.click());
+  imageUpload.addEventListener('change', handleImageUpload);
+  container.addEventListener('mousedown', handleCanvasMouseDown);
+  document.addEventListener('mousemove', handleMouseMove);
+  document.addEventListener('mouseup', () => {
+    isDrawing = false;
+    if (rectangleExists) {
+      updateDimensionsDisplay();
+    }
+  });
+  confirmBtn.addEventListener('click', handleConfirm);
+  cancelBtn.addEventListener('click', handleCancel);
+  closeBtn.addEventListener('click', handleCancel);
+  backgroundImage.addEventListener('dragstart', e => e.preventDefault());
 
-document.addEventListener('DOMContentLoaded', function() {
-    initializeEventListeners();
+  // Aspect Ratio Mode Selector
+  const aspectRatioSelect = document.getElementById('aspect-ratio-select');
+  const aspectRatioHint = document.getElementById('aspect-ratio-hint');
+
+  if (aspectRatioSelect) {
+    aspectRatioSelect.addEventListener('change', (e) => {
+      aspectRatioMode = e.target.value;
+
+      // Calcola valore numerico
+      const ratioMap = {
+        "free": null,
+        "1:1": 1/1,
+        "3:4": 3/4,
+        "5:8": 5/8,
+        "9:16": 9/16,
+        "9:21": 9/21,
+        "4:3": 4/3,
+        "3:2": 3/2,
+        "16:9": 16/9,
+        "21:9": 21/9,
+      };
+
+      aspectRatioValue = ratioMap[aspectRatioMode];
+
+      // Aggiorna hint
+      if (aspectRatioMode === "free") {
+        aspectRatioHint.textContent = "Disegno libero - il ratio verrà calcolato";
+        aspectRatioHint.style.color = "#64748b";
+        aspectRatioHint.style.fontWeight = "normal";
+      } else {
+        aspectRatioHint.textContent = `Rettangolo vincolato a ${aspectRatioMode}`;
+        aspectRatioHint.style.color = "#16a34a";
+        aspectRatioHint.style.fontWeight = "600";
+      }
+
+      console.log(`[AspectRatio] Mode: ${aspectRatioMode}, Value: ${aspectRatioValue}`);
+
+      // Se c'è già un rettangolo e passi a modalità vincolata, adattalo
+      if (rectangleExists && aspectRatioValue !== null) {
+        adjustRectangleToAspectRatio();
+      }
+    });
+  }
+
+  // 🔹 Gestione immagini caricate da ComfyUI (backend scala se necessario)
+  backgroundImage.addEventListener("load", () => {
+    const naturalW = backgroundImage.naturalWidth;
+    const naturalH = backgroundImage.naturalHeight;
+
+    console.log(`[RegionSelector] Image loaded: ${naturalW}x${naturalH}`);
+
+    // Usa i dati salvati da loadBackgroundImage() se disponibili
+    const scaled = backgroundImage.dataset.scaled === "true";
+    const scaleFactor = parseFloat(backgroundImage.dataset.scaleFactor || "1");
+
+    if (scaled) {
+      console.log(`[RegionSelector] Loaded scaled image with scale factor: ${scaleFactor}`);
+    } else {
+      console.log(`[RegionSelector] Loaded original image (≤ 1024px)`);
+    }
+
+    // Salva i metadati
+    backgroundImage.dataset.originalScale = scaleFactor;
+
+    // 🆕 Crea bottone Fix Image Size se immagine è più grande di 1024
+    const maxDim = Math.max(naturalW, naturalH);
+    console.log(`[FixImage] maxDim = ${maxDim}, condition (>1024) = ${maxDim > 1024}`);
+
+    if (maxDim > 1024) {
+      console.log('[FixImage] Image is large, creating button...');
+      if (!document.getElementById('fix-image-btn')) {
+        createFixImageButton();
+        showAutoFixSuggestion(maxDim);
+      } else {
+        console.log('[FixImage] Button already exists, skipping creation');
+      }
+    } else {
+      console.log('[FixImage] Image is small, no button needed');
+    }
+
+    setTimeout(updateImageScale, 150);
+  });
 });
 
-function initializeEventListeners() {
-    // Upload button
-    uploadBtn.addEventListener('click', handleUploadClick);
-    imageUpload.addEventListener('change', handleImageUpload);
-
-    // Zoom buttons
-    zoomInBtn.addEventListener('click', handleZoomIn);
-    zoomOutBtn.addEventListener('click', handleZoomOut);
-
-    // Border controls
-    borderSlider.addEventListener('input', handleBorderChange);
-    borderPositionRadios.forEach(radio => {
-        radio.addEventListener('change', handleBorderPositionChange);
-    });
-
-    // Reset button
-    resetBtn.addEventListener('click', handleReset);
-
-    // Canvas drawing
-    container.addEventListener('mousedown', handleCanvasMouseDown);
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-
-    // Action buttons
-    confirmBtn.addEventListener('click', handleConfirm);
-    cancelBtn.addEventListener('click', handleCancel);
-    closeBtn.addEventListener('click', handleCancel);
-
-    // Prevent image drag
-    backgroundImage.addEventListener('dragstart', (e) => e.preventDefault());
-}
-
 // ============================================================================
-// FILE UPLOAD
+// FILE UPLOAD MANUALE
 // ============================================================================
-
-function handleUploadClick() {
-    imageUpload.click();
-}
-
 function handleImageUpload(e) {
-    const file = e.target.files[0];
-    if (file && file.type.startsWith('image/')) {
-        const reader = new FileReader();
+  const file = e.target.files[0];
+  if (!file) return;
 
-        reader.onload = function(event) {
-            backgroundImage.src = event.target.result;
-            imageName.textContent = `Immagine corrente: ${file.name}`;
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    backgroundImage.src = event.target.result;
+    imageName.textContent = `Immagine corrente: ${file.name}`;
 
-            if (currentRectangle) {
-                if (confirm('Cambiando immagine il rettangolo verrà cancellato. Continuare?')) {
-                    resetRectangle();
-                } else {
-                    imageUpload.value = '';
-                    return;
-                }
-            }
-        };
+    backgroundImage.onload = () => {
+      backgroundImage.dataset.originalWidth = backgroundImage.naturalWidth;
+      backgroundImage.dataset.originalHeight = backgroundImage.naturalHeight;
+      backgroundImage.dataset.originalScale = 1;
+      setTimeout(updateImageScale, 150);
+    };
+  };
+  reader.readAsDataURL(file);
+}
 
-        reader.readAsDataURL(file);
-    }
+// ============================================================================
+// UPDATE SCALE
+// ============================================================================
+function updateImageScale() {
+  if (!backgroundImage) return;
+  const nW = backgroundImage.naturalWidth;
+  const dW = backgroundImage.clientWidth || backgroundImage.width;
+  if (!nW || !dW) return;
+  imageScale = nW / dW;
+  console.log(`[RegionSelector] imageScale=${imageScale.toFixed(3)}`);
+}
+
+// ============================================================================
+// ADJUST RECTANGLE TO ASPECT RATIO
+// ============================================================================
+function adjustRectangleToAspectRatio() {
+  if (!aspectRatioValue || !rectangleExists) return;
+
+  // Mantieni larghezza, adatta altezza al ratio
+  baseHeight = baseWidth / aspectRatioValue;
+
+  // Aggiorna visualizzazione
+  updateRectanglePosition(
+    baseX / imageScale,
+    baseY / imageScale,
+    baseWidth / imageScale,
+    baseHeight / imageScale
+  );
+
+  updateDimensionsDisplay();
+
+  console.log(`[AspectRatio] Adjusted to ${aspectRatioMode}: ${Math.round(baseWidth)}x${Math.round(baseHeight)}`);
 }
 
 // ============================================================================
 // RECTANGLE DRAWING
 // ============================================================================
-
 function handleCanvasMouseDown(e) {
-    if (e.button !== 0) return; // Solo left click
-    if (!container || !backgroundImage) return;
+  if (e.button !== 0) return;
+  const rect = backgroundImage.getBoundingClientRect();
+  const imgX = e.clientX - rect.left;
+  const imgY = e.clientY - rect.top;
 
-    const rect = container.getBoundingClientRect();
-    const imgRect = backgroundImage.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
+  isDrawing = true;
+  baseX = imgX * imageScale;  // USA imageScale per ottenere coordinate reali
+  baseY = imgY * imageScale;
+  baseWidth = 1;
+  baseHeight = 1;
+  createNewRectangle(imgX, imgY, 1, 1);
 
-    // Coordinate del click relative all'immagine
-    const imgX = e.clientX - imgRect.left;
-    const imgY = e.clientY - imgRect.top;
-
-    // Se il click è fuori dall'immagine, non fare nulla
-    if (imgX < 0 || imgY < 0 || imgX > imgRect.width || imgY > imgRect.height) {
-        return;
-    }
-
-    // Verifica se stai ridimensionando
-    if (currentRectangle) {
-        const handleRect = detectResizeHandle(e, currentRectangle);
-        if (handleRect) {
-            isResizing = true;
-            resizingEdge = handleRect;
-            startX = e.clientX;
-            startY = e.clientY;
-            rectStartX = baseX;
-            rectStartY = baseY;
-            rectStartWidth = baseWidth;
-            rectStartHeight = baseHeight;
-            currentRectangle.classList.add('resizing');
-            return;
-        }
-
-        // Verifica se stai spostando il rettangolo
-        if (isClickInsideRectangle(e, currentRectangle, imgRect)) {
-            isDrawing = true;
-            startX = e.clientX;
-            startY = e.clientY;
-            rectStartX = baseX;
-            rectStartY = baseY;
-            return;
-        }
-    }
-
-    // Inizia nuovo rettangolo
-    isDrawing = true;
-    startX = imgX;
-    startY = imgY;
-    baseX = imgX;
-    baseY = imgY;
-    baseWidth = 1;
-    baseHeight = 1;
-
-    createNewRectangle(imgX, imgY, 1, 1);
+  // Resetta le info
+  updateDimensionsDisplay();
 }
 
 function handleMouseMove(e) {
-    if (!isDrawing && !isResizing) return;
-    if (!container || !backgroundImage) return;
+  if (!isDrawing) return;
+  const rect = backgroundImage.getBoundingClientRect();
+  const imgX = e.clientX - rect.left;
+  const imgY = e.clientY - rect.top;
 
-    const imgRect = backgroundImage.getBoundingClientRect();
+  const realX = imgX * imageScale;
+  const realY = imgY * imageScale;
 
-    if (isResizing && currentRectangle && resizingEdge) {
-        handleResizeRectangle(e, imgRect);
-    } else if (isDrawing) {
-        const imgX = e.clientX - imgRect.left;
-        const imgY = e.clientY - imgRect.top;
+  // Calcola dimensioni base
+  let newWidth = Math.abs(realX - baseX);
+  let newHeight = Math.abs(realY - baseY);
 
-        const width = Math.max(10, Math.abs(imgX - startX));
-        const height = Math.max(10, Math.abs(imgY - startY));
-        const x = Math.min(startX, imgX);
-        const y = Math.min(startY, imgY);
-
-        baseX = x;
-        baseY = y;
-        baseWidth = width;
-        baseHeight = height;
-
-        updateRectanglePosition(x, y, width, height);
-        updateAllDimensions();
+  // ⚙️ APPLICA VINCOLO SE NECESSARIO
+  if (aspectRatioValue !== null) {
+    // Modalità vincolata: forza l'aspect ratio
+    // Mantieni la dimensione maggiore e adatta l'altra
+    if (newWidth / aspectRatioValue > newHeight) {
+      newHeight = newWidth / aspectRatioValue;
+    } else {
+      newWidth = newHeight * aspectRatioValue;
     }
+  }
+  // Altrimenti modalità "free": usa dimensioni naturali
+
+  baseWidth = newWidth;
+  baseHeight = newHeight;
+
+  const x = Math.min(baseX, realX);
+  const y = Math.min(baseY, realY);
+
+  // Aggiorna visualizzazione
+  updateRectanglePosition(x / imageScale, y / imageScale, baseWidth / imageScale, baseHeight / imageScale);
+
+  // Aggiorna info
+  updateDimensionsDisplay();
+
+  // Abilita conferma
+  if (baseWidth > 10 && baseHeight > 10) {
+    confirmBtn.disabled = false;
+  }
 }
 
-function handleMouseUp(e) {
-    if (isResizing && currentRectangle) {
-        currentRectangle.classList.remove('resizing');
+function updateDimensionsDisplay() {
+  const baseCoordinatesDiv = document.getElementById("base-coordinates");
+  if (!baseCoordinatesDiv) {
+    console.warn("[RegionSelector] base-coordinates div not found!");
+    return;
+  }
+
+  if (!rectangleExists || baseWidth === 0 || baseHeight === 0) {
+    baseCoordinatesDiv.innerHTML = `<p>Clicca e trascina sull'immagine per selezionare una regione</p>`;
+    return;
+  }
+
+  const w = Math.round(baseWidth);
+  const h = Math.round(baseHeight);
+  const ratio = w / h;
+
+  // 🎯 MODALITÀ CUSTOM: Calcola approssimazione
+  let aspectRatioDisplay;
+
+  if (aspectRatioMode === "free") {
+    // Lista aspect ratio standard
+    const standardRatios = [
+      { value: 21/9, label: "21:9 Landscape", display: "21:9" },
+      { value: 16/9, label: "16:9 Landscape", display: "16:9" },
+      { value: 3/2, label: "3:2 Landscape", display: "3:2" },
+      { value: 4/3, label: "4:3 Landscape", display: "4:3" },
+      { value: 1/1, label: "1:1 Square", display: "1:1" },
+      { value: 3/4, label: "3:4 Portrait", display: "3:4" },
+      { value: 5/8, label: "5:8 Portrait", display: "5:8" },
+      { value: 9/16, label: "9:16 Portrait", display: "9:16" },
+      { value: 9/21, label: "9:21 Portrait", display: "9:21" },
+    ];
+
+    // Trova il più vicino
+    let closestRatio = standardRatios[0];
+    let minDiff = Math.abs(ratio - standardRatios[0].value);
+
+    for (const r of standardRatios) {
+      const diff = Math.abs(ratio - r.value);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestRatio = r;
+      }
     }
-    isDrawing = false;
-    isResizing = false;
-    resizingEdge = null;
+
+    const diffPercent = (minDiff / ratio) * 100;
+
+    // Formato display basato su vicinanza
+    if (diffPercent < 3) {
+      // Molto vicino - mostra come esatto
+      aspectRatioDisplay = `<span style="color: #16a34a; font-weight: bold;">✓ ${closestRatio.label}</span>`;
+    } else if (diffPercent < 8) {
+      // Abbastanza vicino - mostra approssimato
+      aspectRatioDisplay = `<span style="color: #ea580c; font-weight: bold;">~ ${closestRatio.label}</span> <span style="opacity: 0.6; font-size: 11px;">(${ratio.toFixed(2)}:1)</span>`;
+    } else {
+      // Troppo diverso - mostra custom + più vicino
+      aspectRatioDisplay = `<span style="color: #2563eb; font-weight: bold;">${ratio.toFixed(2)}:1</span> <span style="opacity: 0.5; font-size: 11px;">(vicino: ${closestRatio.display})</span>`;
+    }
+  } else {
+    // 🔒 MODALITÀ VINCOLATA: Mostra il vincolo attivo
+    aspectRatioDisplay = `<span style="color: #16a34a; font-weight: bold;">🔒 ${aspectRatioMode}</span> <span style="opacity: 0.6; font-size: 11px;">(${ratio.toFixed(2)}:1)</span>`;
+  }
+
+  // Aggiorna HTML
+  baseCoordinatesDiv.innerHTML = `
+    <p><strong>X:</strong> ${Math.round(baseX)} px</p>
+    <p><strong>Y:</strong> ${Math.round(baseY)} px</p>
+    <p><strong>Larghezza:</strong> ${w} px</p>
+    <p><strong>Altezza:</strong> ${h} px</p>
+    <p><strong>Aspect Ratio:</strong> ${aspectRatioDisplay}</p>
+  `;
 }
 
 function createNewRectangle(x, y, width, height) {
-    // Rimuovi il vecchio rettangolo se esiste
-    if (currentRectangle) {
-        currentRectangle.remove();
-    }
-
-    const rect = document.createElement('div');
-    rect.className = `rectangle border-${borderPosition}`;
-    rect.style.left = x + 'px';
-    rect.style.top = y + 'px';
-    rect.style.width = width + 'px';
-    rect.style.height = height + 'px';
-    rect.style.borderWidth = currentBorderWidth + 'px';
-
-    // Aggiungi resize handles
-    ['top-left', 'top-right', 'bottom-left', 'bottom-right'].forEach(position => {
-        const handle = document.createElement('div');
-        handle.className = `resize-handle ${position}`;
-        rect.appendChild(handle);
-    });
-
-    container.appendChild(rect);
-    currentRectangle = rect;
-    rectangleExists = true;
-
-    // Abilita bottoni
-    enableControls();
-    updateAllDimensions();
+  if (currentRectangle) currentRectangle.remove();
+  const rect = document.createElement("div");
+  rect.className = "rectangle border-inside";
+  rect.style.left = `${x}px`;
+  rect.style.top = `${y}px`;
+  rect.style.width = `${width}px`;
+  rect.style.height = `${height}px`;
+  container.appendChild(rect);
+  currentRectangle = rect;
+  rectangleExists = true;
 }
 
 function updateRectanglePosition(x, y, width, height) {
-    if (!currentRectangle) return;
-
-    currentRectangle.style.left = x + 'px';
-    currentRectangle.style.top = y + 'px';
-    currentRectangle.style.width = width + 'px';
-    currentRectangle.style.height = height + 'px';
-}
-
-function handleResizeRectangle(e, imgRect) {
-    if (!currentRectangle) return;
-
-    const deltaX = e.clientX - startX;
-    const deltaY = e.clientY - startY;
-
-    let newX = rectStartX;
-    let newY = rectStartY;
-    let newWidth = rectStartWidth;
-    let newHeight = rectStartHeight;
-
-    // Handle diverse per lato di resize
-    if (resizingEdge.includes('left')) {
-        newX = Math.max(0, rectStartX + deltaX);
-        newWidth = rectStartWidth - (newX - rectStartX);
-    }
-    if (resizingEdge.includes('right')) {
-        newWidth = Math.max(10, rectStartWidth + deltaX);
-    }
-    if (resizingEdge.includes('top')) {
-        newY = Math.max(0, rectStartY + deltaY);
-        newHeight = rectStartHeight - (newY - rectStartY);
-    }
-    if (resizingEdge.includes('bottom')) {
-        newHeight = Math.max(10, rectStartHeight + deltaY);
-    }
-
-    newWidth = Math.max(10, newWidth);
-    newHeight = Math.max(10, newHeight);
-
-    baseX = newX;
-    baseY = newY;
-    baseWidth = newWidth;
-    baseHeight = newHeight;
-
-    updateRectanglePosition(newX, newY, newWidth, newHeight);
-    updateAllDimensions();
-}
-
-function isClickInsideRectangle(e, rect, imgRect) {
-    const rectBounds = rect.getBoundingClientRect();
-    return e.clientX >= rectBounds.left &&
-           e.clientX <= rectBounds.right &&
-           e.clientY >= rectBounds.top &&
-           e.clientY <= rectBounds.bottom;
-}
-
-function detectResizeHandle(e, rect) {
-    const handles = rect.querySelectorAll('.resize-handle');
-    for (let handle of handles) {
-        const handleRect = handle.getBoundingClientRect();
-        const distance = Math.sqrt(
-            Math.pow(e.clientX - (handleRect.left + handleRect.width / 2), 2) +
-            Math.pow(e.clientY - (handleRect.top + handleRect.height / 2), 2)
-        );
-        if (distance < 12) {
-            return handle.className.split(' ').find(c => c !== 'resize-handle');
-        }
-    }
-    return null;
+  if (!currentRectangle) return;
+  currentRectangle.style.left = `${x}px`;
+  currentRectangle.style.top = `${y}px`;
+  currentRectangle.style.width = `${width}px`;
+  currentRectangle.style.height = `${height}px`;
 }
 
 // ============================================================================
-// ZOOM CONTROLS
+// EXPORT COORDINATES
 // ============================================================================
-
-function handleZoomIn() {
-    if (currentRectangle) {
-        currentZoom = Math.min(currentZoom + zoomStep, maxZoom);
-        updateZoom();
-        updateAllDimensions();
-    }
-}
-
-function handleZoomOut() {
-    if (currentRectangle) {
-        currentZoom = Math.max(currentZoom - zoomStep, minZoom);
-        updateZoom();
-        updateAllDimensions();
-    }
-}
-
-function updateZoom() {
-    const zoomPercent = Math.round(currentZoom * 100);
-    zoomValue.textContent = zoomPercent + '%';
-    if (currentRectangle) {
-        currentRectangle.style.transform = `scale(${currentZoom})`;
-    }
-
-    zoomInBtn.disabled = currentZoom >= maxZoom;
-    zoomOutBtn.disabled = currentZoom <= minZoom;
-}
-
-// ============================================================================
-// BORDER CONTROLS
-// ============================================================================
-
-function handleBorderChange(e) {
-    currentBorderWidth = parseInt(e.target.value);
-    borderValue.textContent = currentBorderWidth + 'px';
-
-    if (currentRectangle) {
-        currentRectangle.style.borderWidth = currentBorderWidth + 'px';
-        updateAllDimensions();
-    }
-}
-
-function handleBorderPositionChange(e) {
-    borderPosition = e.target.value;
-
-    if (currentRectangle) {
-        currentRectangle.classList.remove('border-inside', 'border-outside');
-        currentRectangle.classList.add(`border-${borderPosition}`);
-        updateAllDimensions();
-    }
-}
-
-// ============================================================================
-// RESET AND CLEAR
-// ============================================================================
-
-function handleReset() {
-    resetRectangle();
-}
-
-function resetRectangle() {
-    if (currentRectangle) {
-        currentRectangle.remove();
-        currentRectangle = null;
-    }
-
-    rectangleExists = false;
-    currentZoom = 1;
-    baseWidth = 0;
-    baseHeight = 0;
-    baseX = 0;
-    baseY = 0;
-
-    baseCoordinates.innerHTML = '<p>Clicca e trascina sull\'immagine per disegnare un rettangolo</p>';
-    dimensionsInfo.style.display = 'none';
-
-    disableControls();
-}
-
-// ============================================================================
-// UPDATE DISPLAY
-// ============================================================================
-
-function updateAllDimensions() {
-    if (!rectangleExists) return;
-
-    // Coordinate base (senza zoom e bordi)
-    const baseInfo = `
-        <strong>X:</strong> ${Math.round(baseX)} px<br>
-        <strong>Y:</strong> ${Math.round(baseY)} px<br>
-        <strong>Larghezza:</strong> ${Math.round(baseWidth)} px<br>
-        <strong>Altezza:</strong> ${Math.round(baseHeight)} px<br>
-        <br>
-        <strong>Percentuali:</strong><br>
-        <strong>X%:</strong> ${((baseX / backgroundImage.width) * 100).toFixed(2)}%<br>
-        <strong>Y%:</strong> ${((baseY / backgroundImage.height) * 100).toFixed(2)}%<br>
-        <strong>W%:</strong> ${((baseWidth / backgroundImage.width) * 100).toFixed(2)}%<br>
-        <strong>H%:</strong> ${((baseHeight / backgroundImage.height) * 100).toFixed(2)}%
-    `;
-
-    baseCoordinates.innerHTML = baseInfo;
-
-    // Mostra info zoom e bordi se zoom > 1 o bordo > 0
-    if (currentZoom > 1 || currentBorderWidth > 0) {
-        const zoomedWidth = baseWidth * currentZoom;
-        const zoomedHeight = baseHeight * currentZoom;
-
-        const dimensionsHTML = `
-            <strong>Con Zoom ${Math.round(currentZoom * 100)}%:</strong><br>
-            <strong>Larghezza:</strong> ${Math.round(zoomedWidth)} px<br>
-            <strong>Altezza:</strong> ${Math.round(zoomedHeight)} px<br>
-            <br>
-            <strong>Bordo:</strong> ${currentBorderWidth}px (${borderPosition})<br>
-        `;
-
-        currentDimensions.innerHTML = dimensionsHTML;
-        dimensionsInfo.style.display = 'block';
-    } else {
-        dimensionsInfo.style.display = 'none';
-    }
-}
-
-// ============================================================================
-// BUTTON STATES
-// ============================================================================
-
-function enableControls() {
-    zoomInBtn.disabled = false;
-    zoomOutBtn.disabled = false;
-    resetBtn.disabled = false;
-    confirmBtn.disabled = false;
-}
-
-function disableControls() {
-    zoomInBtn.disabled = true;
-    zoomOutBtn.disabled = true;
-    resetBtn.disabled = true;
-    confirmBtn.disabled = true;
-}
-
-// ============================================================================
-// COORDINATE EXPORT
-// ============================================================================
-
 function getCoordinates() {
-    if (!rectangleExists) {
-        return {};
-    }
+  if (!rectangleExists) return {};
 
-    return {
-        x: Math.round(baseX),
-        y: Math.round(baseY),
-        width: Math.round(baseWidth),
-        height: Math.round(baseHeight),
-        zoom: currentZoom,
-        borderWidth: currentBorderWidth,
-        borderPosition: borderPosition,
-    };
+  // Leggi il fattore di scala salvato da loadBackgroundImage()
+  const scaleFactor = parseFloat(backgroundImage.dataset.originalScale || "1");
+
+  // Le coordinate baseX, baseY, baseWidth, baseHeight sono relative all'immagine visualizzata
+  // Se l'immagine è stata scalata dal backend, devi applicare il fattore di scala inverso
+  // Per ottenere le coordinate dell'immagine ORIGINALE (prima del scaling)
+
+  const coords = {
+    x: Math.round(baseX / scaleFactor),              // Dividi per scale factor
+    y: Math.round(baseY / scaleFactor),
+    width: Math.round(baseWidth / scaleFactor),
+    height: Math.round(baseHeight / scaleFactor),
+    imageScale: imageScale,
+    scaleFactor: scaleFactor,                         // Salva il fattore di scala per riferimento
+    displayedWidth: backgroundImage.clientWidth,
+    displayedHeight: backgroundImage.clientHeight,
+    naturalWidth: backgroundImage.naturalWidth,
+    naturalHeight: backgroundImage.naturalHeight
+  };
+
+  console.log("[RegionSelector] Exporting coordinates:", coords);
+  return coords;
 }
 
 // ============================================================================
 // ACTION BUTTONS
 // ============================================================================
-
 function handleConfirm() {
-    const coordinates = getCoordinates();
-
-    if (!rectangleExists) {
-        alert('Nessuna selezione effettuata');
-        return;
-    }
-
-    // Invia coordinate al callback
-    if (onConfirmCallback) {
-        onConfirmCallback(coordinates);
-    }
-
-    // Log per debug
-    console.log('Coordinates confirmed:', coordinates);
+  const coords = getCoordinates();
+  if (onConfirmCallback) onConfirmCallback(coords);
+  console.log("[RegionSelector] Coordinates confirmed");
 }
 
 function handleCancel() {
-    if (onCancelCallback) {
-        onCancelCallback();
-    }
-    // Non chiudere la finestra - il callback si occuperà di chiudere il modal
+  if (onCancelCallback) onCancelCallback();
 }
 
 // ============================================================================
-// PUBLIC API (per integrazione ComfyUI)
+// FIX IMAGE SIZE - FUNZIONI
 // ============================================================================
 
-window.RegionSelector = {
-    /**
-     * Inizializza il selettore di regioni con callback personalizzati
-     * @param {Function} onConfirm - Callback quando l'utente conferma (riceve coordinates)
-     * @param {Function} onCancel - Callback quando l'utente annulla
-     */
-    init: function(onConfirm, onCancel) {
-        onConfirmCallback = onConfirm;
-        onCancelCallback = onCancel;
-    },
+/**
+ * Crea dinamicamente il bottone "Fix Image Size" nel panel di controllo.
+ */
+function createFixImageButton() {
+  // Controlla se bottone esiste già
+  if (document.getElementById('fix-image-btn')) {
+    console.log('[FixImage] Button already exists');
+    return;
+  }
 
-    /**
-     * Ottieni le coordinate attuali della selezione
-     * @returns {Object} Oggetto con x, y, width, height, zoom, borderWidth, borderPosition
-     */
-    getCoordinates: function() {
-        return getCoordinates();
-    },
+  // Trova dove mettere il bottone: dopo aspect ratio hint
+  const aspectRatioHint = document.getElementById('aspect-ratio-hint');
 
-    /**
-     * Imposta un'immagine da URL
-     * @param {String} imageUrl - URL dell'immagine
-     */
-    setImage: function(imageUrl) {
-        if (currentRectangle) {
-            if (confirm('Cambiando immagine il rettangolo verrà cancellato. Continuare?')) {
-                resetRectangle();
-            } else {
-                return;
-            }
-        }
-        backgroundImage.src = imageUrl;
-        imageName.textContent = 'Immagine caricata';
-    },
+  if (!aspectRatioHint) {
+    console.error('[FixImage] Could not find aspect-ratio-hint');
+    return;
+  }
 
-    /**
-     * Carica una selezione precedente
-     * @param {Object} coordinates - Oggetto coordinate
-     */
-    loadCoordinates: function(coordinates) {
-        if (!coordinates || !coordinates.x) return;
+  // Crea il nuovo control group per il bottone
+  const newControlGroup = document.createElement('div');
+  newControlGroup.className = 'control-group';
 
-        baseX = coordinates.x || 0;
-        baseY = coordinates.y || 0;
-        baseWidth = coordinates.width || 100;
-        baseHeight = coordinates.height || 100;
-        currentZoom = coordinates.zoom || 1;
-        currentBorderWidth = coordinates.borderWidth || 3;
-        borderPosition = coordinates.borderPosition || 'inside';
-
-        // Aggiorna UI
-        borderSlider.value = currentBorderWidth;
-        borderValue.textContent = currentBorderWidth + 'px';
-        document.querySelector(`input[value="${borderPosition}"]`).checked = true;
-        updateZoom();
-
-        // Ridisegna
-        createNewRectangle(baseX, baseY, baseWidth, baseHeight);
+  // Crea il bottone
+  const fixImageBtn = document.createElement('button');
+  fixImageBtn.id = 'fix-image-btn';
+  fixImageBtn.className = 'btn btn-primary';
+  fixImageBtn.textContent = '⚡ Fix Image Size';
+  fixImageBtn.addEventListener('click', () => {
+    console.log('[FixImage] Button clicked, isImageFixed =', isImageFixed);
+    if (isImageFixed) {
+      resetImageScale();
+    } else {
+      fixImageScale();
     }
+  });
+
+  // Crea la piccola descrizione
+  const small = document.createElement('small');
+  small.textContent = 'Ridimensiona preview per selezione fluida';
+
+  // Aggiungi al control group
+  newControlGroup.appendChild(fixImageBtn);
+  newControlGroup.appendChild(small);
+
+  // Inserisci dopo aspect ratio hint
+  aspectRatioHint.parentNode.insertBefore(newControlGroup, aspectRatioHint.nextSibling);
+
+  console.log('[FixImage] Button created dynamically');
+}
+
+/**
+ * Ridimensiona la preview dell'immagine a max 1024px mantenendo aspect ratio.
+ */
+function fixImageScale() {
+  const naturalW = backgroundImage.naturalWidth;
+  const naturalH = backgroundImage.naturalHeight;
+  const maxDim = 1024;
+
+  const maxCurrent = Math.max(naturalW, naturalH);
+
+  if (maxCurrent <= maxDim) {
+    alert("✓ Immagine già piccola (max: " + maxCurrent + "px)!");
+    return;
+  }
+
+  displayScaleFactor = maxDim / maxCurrent;
+
+  const newW = Math.round(naturalW * displayScaleFactor);
+  const newH = Math.round(naturalH * displayScaleFactor);
+
+  console.log(`[FixImage] Scaling ${naturalW}x${naturalH} → ${newW}x${newH} (factor: ${displayScaleFactor.toFixed(3)})`);
+
+  backgroundImage.style.width = `${newW}px`;
+  backgroundImage.style.height = `${newH}px`;
+  backgroundImage.style.maxWidth = 'none';
+  backgroundImage.style.maxHeight = 'none';
+
+  isImageFixed = true;
+  const fixImageBtn = document.getElementById('fix-image-btn');
+  if (fixImageBtn) {
+    fixImageBtn.textContent = "🔄 Reset Scale";
+    fixImageBtn.classList.remove('btn-primary');
+    fixImageBtn.classList.add('btn-warning');
+  }
+
+  showScaleInfo(displayScaleFactor, newW, newH, naturalW, naturalH);
+
+  const suggestion = document.getElementById('auto-fix-suggestion');
+  if (suggestion) {
+    suggestion.style.display = 'none';
+  }
+
+  setTimeout(() => {
+    updateImageScale();
+  }, 100);
+}
+
+/**
+ * Resetta la visualizzazione dell'immagine alle dimensioni originali.
+ */
+function resetImageScale() {
+  displayScaleFactor = 1.0;
+
+  console.log("[FixImage] Resetting to original scale");
+
+  backgroundImage.style.width = 'auto';
+  backgroundImage.style.height = 'auto';
+  backgroundImage.style.maxWidth = '100%';
+  backgroundImage.style.maxHeight = '100%';
+
+  isImageFixed = false;
+  const fixImageBtn = document.getElementById('fix-image-btn');
+  if (fixImageBtn) {
+    fixImageBtn.textContent = "⚡ Fix Image Size";
+    fixImageBtn.classList.remove('btn-warning');
+    fixImageBtn.classList.add('btn-primary');
+  }
+
+  hideScaleInfo();
+
+  setTimeout(() => {
+    updateImageScale();
+  }, 100);
+}
+
+/**
+ * Mostra le informazioni sul fattore di scala applicato.
+ */
+function showScaleInfo(scale, displayW, displayH, originalW, originalH) {
+  const infoDiv = document.getElementById('scale-info');
+  if (!infoDiv) return;
+
+  const scalePercent = (scale * 100).toFixed(1);
+
+  infoDiv.innerHTML = `
+    <p><strong>📊 Preview Scale:</strong> ${scalePercent}%</p>
+    <p><strong>🖼️ Display Size:</strong> ${displayW} × ${displayH} px</p>
+    <p><strong>📐 Original Size:</strong> ${originalW} × ${originalH} px</p>
+    <p style="color: #16a34a; font-weight: 600; margin-top: 8px;">✓ Selezione fluida attiva</p>
+    <p style="font-size: 10px; color: #64748b; margin-top: 5px;">Le coordinate saranno convertite automaticamente</p>
+  `;
+  infoDiv.style.display = 'block';
+}
+
+/**
+ * Nasconde le informazioni sul fattore di scala.
+ */
+function hideScaleInfo() {
+  const infoDiv = document.getElementById('scale-info');
+  if (infoDiv) {
+    infoDiv.style.display = 'none';
+  }
+}
+
+/**
+ * Mostra un suggerimento per fixare immagini molto grandi.
+ */
+function showAutoFixSuggestion(maxDimension) {
+  const suggestion = document.getElementById('auto-fix-suggestion');
+  if (!suggestion) return;
+
+  const fixImageBtn = document.getElementById('fix-image-btn');
+
+  suggestion.innerHTML = `
+    <p style="color: #ea580c; font-weight: 600; margin-bottom: 5px;">
+        ⚠️ Immagine molto grande (${maxDimension} px)
+    </p>
+    <p style="font-size: 11px; color: #64748b;">
+        Per una selezione più fluida, clicca il bottone "Fix Image Size" qui sotto
+    </p>
+  `;
+  suggestion.style.display = 'block';
+
+  if (fixImageBtn) {
+    fixImageBtn.classList.add('pulse-animation');
+
+    setTimeout(() => {
+      fixImageBtn.classList.remove('pulse-animation');
+    }, 5000);
+  }
+}
+
+// ============================================================================
+// PUBLIC API
+// ============================================================================
+window.RegionSelector = {
+  init: (onConfirm, onCancel) => {
+    onConfirmCallback = onConfirm;
+    onCancelCallback = onCancel;
+  },
+  getCoordinates: () => getCoordinates()
 };

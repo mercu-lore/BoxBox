@@ -228,16 +228,57 @@ function handleSelectorCancel(modal) {
 
 /**
  * Carica un'immagine come sfondo nell'interfaccia
- * (Opzionale - per preview)
+ * Ridimensiona automaticamente se > 1024px
  */
-function loadBackgroundImage(node, widthWidget, heightWidget) {
+async function loadBackgroundImage(node, widthWidget, heightWidget) {
     try {
-        // Cerca un nodo con input immagine nel flusso
-        // Per ora, usa l'immagine default di picsum.photos
         const bgImg = document.getElementById("background-image");
-        if (bgImg) {
-            // Opzionalmente puoi aggiungere logica per caricare immagini
-            console.log("Image loader ready");
+        if (!bgImg) {
+            console.warn("background-image element not found");
+            return;
+        }
+
+        // Cerca il widget immagine del nodo
+        const imageWidget = node.widgets.find(w => w.type === "image" || w.name === "image");
+        if (!imageWidget || !imageWidget.value) {
+            console.warn("No image widget found on node");
+            return;
+        }
+
+        // Estrai il filename dall'immagine
+        let filename = imageWidget.value;
+        if (typeof filename === "object" && filename.name) {
+            filename = filename.name;
+        }
+
+        console.log(`[RegionSelector] Caricamento immagine: ${filename}`);
+
+        // Chiama l'endpoint per scalare se necessario
+        const scaleResponse = await fetch("/region_selector/scale", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filename: filename })
+        });
+
+        const scaleResult = await scaleResponse.json();
+        console.log(`[RegionSelector] Scale result:`, scaleResult);
+
+        if (scaleResult.path) {
+            // Carica l'immagine (originale o scalata) nel Region Selector
+            bgImg.src = scaleResult.path;
+
+            // Salva i dati per il calcolo delle coordinate
+            if (scaleResult.scaled) {
+                bgImg.dataset.scaled = "true";
+                bgImg.dataset.scaleFactor = scaleResult.scale || 1;
+                console.log(`[RegionSelector] Immagine scalata caricata, scale factor: ${scaleResult.scale}`);
+            } else {
+                bgImg.dataset.scaled = "false";
+                bgImg.dataset.scaleFactor = 1;
+                console.log(`[RegionSelector] Immagine originale caricata (≤ 1024px)`);
+            }
+        } else if (scaleResult.error) {
+            console.warn(`[RegionSelector] Scale error: ${scaleResult.error}`);
         }
     } catch (e) {
         console.warn("Could not auto-load image:", e);

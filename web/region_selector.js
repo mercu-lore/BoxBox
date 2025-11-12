@@ -142,7 +142,11 @@ function handleCanvasMouseDown(e) {
     const imgRect = backgroundImage.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
 
-    // Coordinate del click relative all'immagine
+    // Calcola il fattore di scala (rapporto tra dimensioni visuali e dimensioni reali)
+    const scaleX = backgroundImage.naturalWidth / imgRect.width;
+    const scaleY = backgroundImage.naturalHeight / imgRect.height;
+
+    // Coordinate del click relative all'immagine (in coordinate visive)
     const imgX = e.clientX - imgRect.left;
     const imgY = e.clientY - imgRect.top;
 
@@ -150,6 +154,10 @@ function handleCanvasMouseDown(e) {
     if (imgX < 0 || imgY < 0 || imgX > imgRect.width || imgY > imgRect.height) {
         return;
     }
+
+    // Converti a coordinate reali dell'immagine
+    const realImgX = imgX * scaleX;
+    const realImgY = imgY * scaleY;
 
     // Verifica se stai ridimensionando
     if (currentRectangle) {
@@ -178,16 +186,20 @@ function handleCanvasMouseDown(e) {
         }
     }
 
-    // Inizia nuovo rettangolo
+    // Inizia nuovo rettangolo (usando coordinate reali)
     isDrawing = true;
-    startX = imgX;
-    startY = imgY;
-    baseX = imgX;
-    baseY = imgY;
+    startX = realImgX;
+    startY = realImgY;
+    baseX = realImgX;
+    baseY = realImgY;
     baseWidth = 1;
     baseHeight = 1;
 
-    createNewRectangle(imgX, imgY, 1, 1);
+    // Salva i fattori di scala globali per uso in handleMouseMove
+    window.scaleX = scaleX;
+    window.scaleY = scaleY;
+
+    createNewRectangle(realImgX, realImgY, 1, 1);
 }
 
 function handleMouseMove(e) {
@@ -196,16 +208,24 @@ function handleMouseMove(e) {
 
     const imgRect = backgroundImage.getBoundingClientRect();
 
+    // Usa i fattori di scala salvati o calcolali se non disponibili
+    const scaleX = window.scaleX || (backgroundImage.naturalWidth / imgRect.width);
+    const scaleY = window.scaleY || (backgroundImage.naturalHeight / imgRect.height);
+
     if (isResizing && currentRectangle && resizingEdge) {
-        handleResizeRectangle(e, imgRect);
+        handleResizeRectangle(e, imgRect, scaleX, scaleY);
     } else if (isDrawing) {
         const imgX = e.clientX - imgRect.left;
         const imgY = e.clientY - imgRect.top;
 
-        const width = Math.max(10, Math.abs(imgX - startX));
-        const height = Math.max(10, Math.abs(imgY - startY));
-        const x = Math.min(startX, imgX);
-        const y = Math.min(startY, imgY);
+        // Converti a coordinate reali
+        const realImgX = imgX * scaleX;
+        const realImgY = imgY * scaleY;
+
+        const width = Math.max(10, Math.abs(realImgX - startX));
+        const height = Math.max(10, Math.abs(realImgY - startY));
+        const x = Math.min(startX, realImgX);
+        const y = Math.min(startY, realImgY);
 
         baseX = x;
         baseY = y;
@@ -232,12 +252,22 @@ function createNewRectangle(x, y, width, height) {
         currentRectangle.remove();
     }
 
+    // Calcola le coordinate visive basate sulle coordinate reali
+    const imgRect = backgroundImage.getBoundingClientRect();
+    const scaleX = backgroundImage.naturalWidth / imgRect.width;
+    const scaleY = backgroundImage.naturalHeight / imgRect.height;
+
+    const visualX = x / scaleX;
+    const visualY = y / scaleY;
+    const visualWidth = width / scaleX;
+    const visualHeight = height / scaleY;
+
     const rect = document.createElement('div');
     rect.className = `rectangle border-${borderPosition}`;
-    rect.style.left = x + 'px';
-    rect.style.top = y + 'px';
-    rect.style.width = width + 'px';
-    rect.style.height = height + 'px';
+    rect.style.left = visualX + 'px';
+    rect.style.top = visualY + 'px';
+    rect.style.width = visualWidth + 'px';
+    rect.style.height = visualHeight + 'px';
     rect.style.borderWidth = currentBorderWidth + 'px';
 
     // Aggiungi resize handles
@@ -259,17 +289,27 @@ function createNewRectangle(x, y, width, height) {
 function updateRectanglePosition(x, y, width, height) {
     if (!currentRectangle) return;
 
-    currentRectangle.style.left = x + 'px';
-    currentRectangle.style.top = y + 'px';
-    currentRectangle.style.width = width + 'px';
-    currentRectangle.style.height = height + 'px';
+    // Calcola le coordinate visive basate sulle coordinate reali
+    const imgRect = backgroundImage.getBoundingClientRect();
+    const scaleX = backgroundImage.naturalWidth / imgRect.width;
+    const scaleY = backgroundImage.naturalHeight / imgRect.height;
+
+    const visualX = x / scaleX;
+    const visualY = y / scaleY;
+    const visualWidth = width / scaleX;
+    const visualHeight = height / scaleY;
+
+    currentRectangle.style.left = visualX + 'px';
+    currentRectangle.style.top = visualY + 'px';
+    currentRectangle.style.width = visualWidth + 'px';
+    currentRectangle.style.height = visualHeight + 'px';
 }
 
-function handleResizeRectangle(e, imgRect) {
+function handleResizeRectangle(e, imgRect, scaleX, scaleY) {
     if (!currentRectangle) return;
 
-    const deltaX = e.clientX - startX;
-    const deltaY = e.clientY - startY;
+    const deltaX = (e.clientX - startX) * scaleX;
+    const deltaY = (e.clientY - startY) * scaleY;
 
     let newX = rectStartX;
     let newY = rectStartY;
@@ -424,10 +464,10 @@ function updateAllDimensions() {
         <strong>Altezza:</strong> ${Math.round(baseHeight)} px<br>
         <br>
         <strong>Percentuali:</strong><br>
-        <strong>X%:</strong> ${((baseX / backgroundImage.width) * 100).toFixed(2)}%<br>
-        <strong>Y%:</strong> ${((baseY / backgroundImage.height) * 100).toFixed(2)}%<br>
-        <strong>W%:</strong> ${((baseWidth / backgroundImage.width) * 100).toFixed(2)}%<br>
-        <strong>H%:</strong> ${((baseHeight / backgroundImage.height) * 100).toFixed(2)}%
+        <strong>X%:</strong> ${((baseX / backgroundImage.naturalWidth) * 100).toFixed(2)}%<br>
+        <strong>Y%:</strong> ${((baseY / backgroundImage.naturalHeight) * 100).toFixed(2)}%<br>
+        <strong>W%:</strong> ${((baseWidth / backgroundImage.naturalWidth) * 100).toFixed(2)}%<br>
+        <strong>H%:</strong> ${((baseHeight / backgroundImage.naturalHeight) * 100).toFixed(2)}%
     `;
 
     baseCoordinates.innerHTML = baseInfo;

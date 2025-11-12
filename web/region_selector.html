@@ -91,15 +91,17 @@ body {
     display: flex;
     flex: 1;
     overflow: hidden;
+    min-height: 0;
+    min-width: 0;
 }
 
 /* Control Panel */
 .control-panel {
-    width: 320px;
+    width: 250px;
     background-color: var(--panel-bg);
     border-right: 1px solid var(--border-color);
     overflow-y: auto;
-    padding: 20px;
+    padding: 15px;
 }
 
 .control-panel h3 {
@@ -177,6 +179,31 @@ input[type="range"]::-moz-range-thumb {
     transition: all 0.2s ease;
 }
 
+/* Selettore aspect ratio */
+.aspect-ratio-select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 13px;
+    background-color: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.aspect-ratio-select:focus {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
+#aspect-ratio-hint {
+    display: block;
+    margin-top: 5px;
+    font-size: 11px;
+    color: var(--text-light);
+    font-style: italic;
+}
+
 /* Buttons */
 .btn {
     padding: 8px 12px;
@@ -226,6 +253,32 @@ input[type="range"]::-moz-range-thumb {
 
 .btn-secondary:hover:not(:disabled) {
     background-color: #475569;
+}
+
+.btn-warning {
+    background-color: var(--warning-color);
+    border-color: var(--warning-color);
+    color: white;
+    width: 100%;
+}
+
+.btn-warning:hover:not(:disabled) {
+    background-color: #c2410c;
+    border-color: #c2410c;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.pulse-animation {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.info-box-warning {
+    background-color: #fff7ed;
+    border-color: #fed7aa;
 }
 
 .btn-success {
@@ -305,12 +358,12 @@ input[type="range"]::-moz-range-thumb {
 .info-box {
     background-color: #f9fafb;
     border: 1px solid var(--border-color);
-    padding: 12px;
+    padding: 8px;
     border-radius: 6px;
     font-family: 'Monaco', 'Courier New', monospace;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-color);
-    line-height: 1.5;
+    line-height: 1.4;
     overflow-x: auto;
 }
 
@@ -331,8 +384,8 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .action-buttons .btn {
-    padding: 10px;
-    font-size: 13px;
+    padding: 8px;
+    font-size: 12px;
     font-weight: 600;
 }
 
@@ -356,25 +409,32 @@ hr {
     background-color: #fafbfc;
     overflow: hidden;
     position: relative;
+    padding: 20px;
+    min-height: 0;
+    min-width: 0;
 }
 
 #canvas-container {
     position: relative;
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
     background-color: white;
-    border-radius: 8px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
     overflow: hidden;
-    max-width: 90%;
-    max-height: 90%;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
 }
 
 #background-image {
     display: block;
+    width: auto;
+    height: auto;
     max-width: 100%;
     max-height: 100%;
+    object-fit: contain;
+    object-position: center;
     user-select: none;
     -webkit-user-select: none;
     -webkit-user-drag: none;
@@ -470,7 +530,7 @@ hr {
 /* Responsive Design */
 @media (max-width: 1024px) {
     .control-panel {
-        width: 280px;
+        width: 220px;
     }
 }
 
@@ -523,64 +583,34 @@ textarea:focus {
         <div class="selector-content">
             <!-- Control Panel -->
             <div class="control-panel">
-                <h3>Controlli</h3>
+                <h3>Selezione</h3>
 
-                <!-- Image Upload -->
+                <!-- Selettore Aspect Ratio -->
                 <div class="control-group">
-                    <label for="image-upload">Carica Immagine:</label>
-                    <input type="file" id="image-upload" accept="image/*" style="display: none;">
-                    <button id="upload-btn" class="btn btn-primary">
-                        <span>📁</span> Scegli Immagine
-                    </button>
-                    <small id="image-name">Immagine corrente: picsum.photos</small>
+                    <label for="aspect-ratio-select">Aspect Ratio:</label>
+                    <select id="aspect-ratio-select" class="aspect-ratio-select">
+                        <option value="free" selected>Custom (Free)</option>
+                        <option value="1:1">1:1 Square 1024x1024</option>
+                        <option value="3:4">3:4 Portrait 896x1152</option>
+                        <option value="5:8">5:8 Portrait 832x1216</option>
+                        <option value="9:16">9:16 Portrait 768x1344</option>
+                        <option value="9:21">9:21 Portrait 640x1536</option>
+                        <option value="4:3">4:3 Landscape 1152x896</option>
+                        <option value="3:2">3:2 Landscape 1216x832</option>
+                        <option value="16:9">16:9 Landscape 1344x768</option>
+                        <option value="21:9">21:9 Landscape 1536x640</option>
+                    </select>
+                    <small id="aspect-ratio-hint">Disegno libero - il ratio verrà calcolato</small>
                 </div>
 
-                <hr>
-
-                <!-- Zoom Controls -->
-                <div class="control-group">
-                    <label>Zoom Selezione:</label>
-                    <div class="zoom-buttons">
-                        <button id="zoom-out-btn" class="btn btn-small" disabled>🔍- Zoom Out</button>
-                        <button id="zoom-in-btn" class="btn btn-small" disabled>🔍+ Zoom In</button>
-                    </div>
-                    <div class="zoom-display">
-                        <span id="zoom-value">100%</span>
-                    </div>
-                    <small>Zoom del rettangolo selezionato</small>
+                <!-- Scale Info Box (nascosto di default) -->
+                <div id="scale-info" class="info-box info-box-secondary" style="display: none; margin-top: 10px;">
+                    <!-- Popolato dinamicamente da JS -->
                 </div>
 
-                <!-- Border Width -->
-                <div class="control-group">
-                    <label for="border-slider">
-                        Spessore Bordo: <span id="border-value">3px</span>
-                    </label>
-                    <input type="range" id="border-slider" min="1" max="20" value="3" step="1">
-                    <small>Larghezza linea di selezione</small>
-                </div>
-
-                <!-- Border Position -->
-                <div class="control-group">
-                    <label>Posizione Bordo:</label>
-                    <div class="radio-group">
-                        <label>
-                            <input type="radio" name="border-position" value="inside" checked>
-                            Interno
-                        </label>
-                        <label>
-                            <input type="radio" name="border-position" value="outside">
-                            Esterno
-                        </label>
-                    </div>
-                </div>
-
-                <hr>
-
-                <!-- Reset Button -->
-                <div class="control-group">
-                    <button id="reset-btn" class="btn btn-secondary" disabled>
-                        🔄 Cancella Selezione
-                    </button>
+                <!-- Auto-fix Suggestion (nascosto di default) -->
+                <div id="auto-fix-suggestion" class="info-box" style="display: none; margin-top: 10px; background-color: #fff7ed; border-color: #fed7aa;">
+                    <!-- Popolato dinamicamente da JS -->
                 </div>
 
                 <hr>
@@ -621,6 +651,6 @@ textarea:focus {
         </div>
     </div>
 
-    <script src="/extensions/image_region_select/region_selector_core.js"></script>
+    <script src="region_selector_core.js"></script>
 </body>
 </html>
