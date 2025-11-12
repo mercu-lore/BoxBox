@@ -22,7 +22,7 @@ Interactive interface to select rectangular regions on images.
 
 #### Output
 - `image` (IMAGE): Original image (passthrough)
-- `region_metadata` (STRING): JSON with selection coordinates
+- `box_metadata` (STRING): JSON with selection coordinates
 
 #### Features
 - 🖱️ **Interactive Selection**: Click and drag to draw rectangles
@@ -60,7 +60,8 @@ Crops images according to coordinates provided by BoxSelector.
 
 #### Input
 - `image` (IMAGE): Image to crop
-- `region_metadata` (STRING): JSON coordinates from BoxSelector (x1, x2, y1, y2)
+- `box_metadata` (STRING): JSON coordinates from BoxSelector (x1, x2, y1, y2)
+  - Connect directly from BoxSelector output
 
 #### Optional Input
 - `fallback_mode` (COMBO): Behavior when no valid coordinates

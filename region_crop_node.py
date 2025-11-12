@@ -23,8 +23,8 @@ class RegionCropNode:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "region_metadata": ("STRING", {
-                    "default": "{}",
+                "box_metadata": ("STRING", {
+                    "default": "",
                     "multiline": True,
                 }),
             },
@@ -40,13 +40,13 @@ class RegionCropNode:
     FUNCTION = "crop_image"
     CATEGORY = "image/region"
 
-    def crop_image(self, image, region_metadata, fallback_mode="use_full_image"):
+    def crop_image(self, image, box_metadata, fallback_mode="use_full_image"):
         """
         Taglia l'immagine secondo le coordinate nel metadata.
 
         Args:
             image: Tensor immagine (B, H, W, C)
-            region_metadata: JSON string con coordinate della regione
+            box_metadata: JSON string con coordinate della regione
             fallback_mode: Cosa fare se non ci sono coordinate valide
 
         Returns:
@@ -54,7 +54,7 @@ class RegionCropNode:
         """
 
         try:
-            metadata = json.loads(region_metadata)
+            metadata = json.loads(box_metadata) if box_metadata.strip() else {}
         except json.JSONDecodeError:
             metadata = {}
 

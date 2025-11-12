@@ -1,7 +1,7 @@
 """
-Region Selector Node - con endpoint di ridimensionamento lato backend.
-Riduce automaticamente le immagini oltre 1024px quando viene aperta
-l'interfaccia "Select Box", salvandole in /temp/.
+BoxSelector Node - Interactive region selection with auto-scaling for large images.
+Automatically scales images > 1024px in preview for smooth selection.
+Outputs box_metadata with coordinates and displayScaleFactor.
 """
 
 import os
@@ -23,18 +23,18 @@ class RegionSelectorNode:
     def INPUT_TYPES(cls):
         return {
             "required": {"image": ("IMAGE",)},
-            "optional": {"region_metadata": ("STRING", {"default": "{}", "multiline": True})}
+            "optional": {"box_metadata": ("STRING", {"default": "", "multiline": True})}
         }
 
     RETURN_TYPES = ("IMAGE", "STRING")
-    RETURN_NAMES = ("image", "region_metadata")
+    RETURN_NAMES = ("image", "box_metadata")
     FUNCTION = "process_region_selection"
     CATEGORY = "image/region"
     OUTPUT_NODE = True
 
-    def process_region_selection(self, image, region_metadata="{}"):
-        if region_metadata.strip() and region_metadata != "{}":
-            self.last_metadata = region_metadata
+    def process_region_selection(self, image, box_metadata="{}"):
+        if box_metadata.strip() and box_metadata != "{}":
+            self.last_metadata = box_metadata
         return (image, self.last_metadata)
 
 
