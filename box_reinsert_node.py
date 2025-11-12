@@ -87,11 +87,22 @@ class BoxReinsertNode:
         y1 = box_meta.get("y1", 0)
         y2 = box_meta.get("y2", 0)
 
+        # Applica fattore di scala se la preview era stata scalata
+        display_scale_factor = box_meta.get("displayScaleFactor", 1.0)
+        if display_scale_factor and display_scale_factor != 1.0:
+            # Se le coordinate sono state prese da una preview scalata,
+            # dividi per il fattore di scala per ottenere le coordinate originali
+            x1 = x1 / display_scale_factor
+            x2 = x2 / display_scale_factor
+            y1 = y1 / display_scale_factor
+            y2 = y2 / display_scale_factor
+            print(f"[BoxReinsertNode] Scale factor detected: {display_scale_factor}x. Adjusted coordinates.")
+
         # Normalizza coordinate (assicura che x1 < x2, y1 < y2)
-        box_x_start = min(x1, x2)
-        box_x_end = max(x1, x2)
-        box_y_start = min(y1, y2)
-        box_y_end = max(y1, y2)
+        box_x_start = int(round(min(x1, x2)))
+        box_x_end = int(round(max(x1, x2)))
+        box_y_start = int(round(min(y1, y2)))
+        box_y_end = int(round(max(y1, y2)))
 
         crop_width = box_x_end - box_x_start
         crop_height = box_y_end - box_y_start

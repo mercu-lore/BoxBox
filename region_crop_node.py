@@ -73,6 +73,17 @@ class RegionCropNode:
             else:
                 raise ValueError("No region coordinates provided in metadata")
 
+        # Estrai il fattore di scala se la preview era stata scalata
+        display_scale_factor = metadata.get("displayScaleFactor", 1.0)
+        if display_scale_factor and display_scale_factor != 1.0:
+            # Se le coordinate sono state prese da una preview scalata,
+            # dividi per il fattore di scala per ottenere le coordinate originali
+            x1 = x1 / display_scale_factor
+            x2 = x2 / display_scale_factor
+            y1 = y1 / display_scale_factor
+            y2 = y2 / display_scale_factor
+            print(f"[BoxCrop] Scale factor detected: {display_scale_factor}x. Adjusted coordinates.")
+
         # Assicura che le coordinate siano integer
         x1 = int(round(x1))
         x2 = int(round(x2))
