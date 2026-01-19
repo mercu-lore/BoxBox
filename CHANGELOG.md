@@ -9,6 +9,8 @@ All notable changes to this enhanced version of BoxBox will be documented in thi
 - **Selection Restoration**: Automatically restores previous selection when reopening
 - **Recursive Node Traversal**: Finds source images through intermediate processing nodes
 - **Better Error Handling**: Image error handler with console logging
+- **Improved Coordinate Logic**: Refined the balance between frontend and backend scaling to ensure pixel-perfect crops.
+- **Removed Annoying Popups**: Removed the "Immagine già piccola" alert which interrupted the workflow.
 
 ### Fixed
 - **Image Loading**: Updated URL construction for ComfyUI compatibility
@@ -18,6 +20,8 @@ All notable changes to this enhanced version of BoxBox will be documented in thi
   - Sanitized filenames to prevent path separator issues
 - **Coordinate Scaling**: Removed duplicate division, now handled correctly by backend
 - **Intermediate Nodes**: Now works with Brightness, Blur, and other processing nodes
+- **Coord Sync**: Reverted frontend division to allow the backend `BoxCrop` to handle scaling, preventing "double-scaling" errors.
+- **UI Polish**: Silenced the "already small" alert popup.
 
 ### Changed
 - Removed annoying popup alert for small images
