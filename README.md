@@ -102,7 +102,7 @@ Then restart ComfyUI.
 ## 🙏 Credits
 
 - **Original Author**: [mercu-lore](https://github.com/mercu-lore)
-- **Enhanced Version**: Pablo Montero
+- **Enhanced Version**: Latentnaut
 - **Improvements**: AI-assisted development with Claude
 
 ---
