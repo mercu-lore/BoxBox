@@ -1,13 +1,7 @@
-/**
- * Region Selector Extension - Integrazione nativa con ComfyUI Dialog
- * Mantiene il bottone nel nodo e apre un dialog nativo
- */
-
+// BoxBox Extension - Modernizada para ComfyUI v1.0 / v0.12.2+
 import { app } from "../../scripts/app.js";
-import { ComfyDialog } from "../../scripts/ui.js";
-import { api } from "../../scripts/api.js";
 
-console.log("[RegionSelectorExt] Loading extension...");
+console.log("[BoxBox] Loading extension (Modern API)...");
 
 /**
  * Canvas Selector - Funzionalità complete di selezione rettangoli
@@ -73,49 +67,71 @@ function initializeCanvasSelector(container, imageUrl, previousMetadata = null) 
     // Ridimensionamento immagini > 1024px lato backend
     // ========================================================
     if (imageUrl) {
-        // Extract filename from URL (works with both encoded and plain URLs)
-        let filename = imageUrl.split('filename=')[1]?.split('&')[0];
-        if (filename) {
-            filename = decodeURIComponent(filename);
+        // Parse URL parameters
+        try {
+            // Create a dummy base URL to handle relative URLs comfortably
+            const checkUrl = new URL(imageUrl, document.baseURI);
+            const params = new URLSearchParams(checkUrl.search);
 
-            fetch("/region_selector/scale", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ filename })
-            })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.path) {
-                        // Try to use API helper for the scaled image path too
-                        let scaledPath = data.path;
-                        try {
-                            scaledPath = api.apiURL(data.path) || data.path;
-                        } catch (e) {
-                            console.warn("[RegionSelectorExt] api.apiURL not available for scaled path:", e);
-                        }
-                        backgroundImage.src = scaledPath;
-                        backgroundImage.dataset.scaleFactor = data.scale || 1;
-                        backgroundImage.dataset.scaled = data.scaled || false;
-                        console.log(`[RegionSelectorExt] Image loaded - Scale: ${data.scale || 1}`);
-                    } else if (data.error) {
-                        console.warn(`[RegionSelectorExt] Scale error: ${data.error}, using original`);
-                        backgroundImage.src = imageUrl;
-                        backgroundImage.dataset.scaleFactor = 1;
-                        backgroundImage.dataset.scaled = false;
-                    }
-                    imageName.textContent = `Image: ${filename}`;
+            const filename = params.get("filename");
+            const type = params.get("type") || "input";
+            const subfolder = params.get("subfolder") || "";
+
+            if (filename) {
+                console.log(`[BoxBox] Requesting scale for: ${filename} (type: ${type}, subfolder: ${subfolder})`);
+
+                // Usare fetch diretto con configurazione robusta
+                fetch("/region_selector/scale", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Accept": "application/json"
+                    },
+                    body: JSON.stringify({
+                        filename: String(filename),
+                        type: String(type),
+                        subfolder: String(subfolder)
+                    })
                 })
-                .catch(e => {
-                    console.error("[RegionSelectorExt] Error in scale fetch:", e);
-                    // Fallback to direct image URL
-                    backgroundImage.src = imageUrl;
-                    backgroundImage.dataset.scaleFactor = 1;
-                    backgroundImage.dataset.scaled = false;
-                    imageName.textContent = `Image: ${filename}`;
-                });
-        } else {
-            // No filename extracted, use imageUrl directly
-            console.log("[RegionSelectorExt] No filename extracted, using imageUrl directly");
+                    .then(async res => {
+                        if (!res.ok) {
+                            const errText = await res.text();
+                            throw new Error(`Server returned ${res.status}: ${errText}`);
+                        }
+                        return res.json();
+                    })
+                    .then(data => {
+                        if (data.path) {
+                            let scaledPath = data.path;
+                            // Assicurati che il path sia convertito correttamente per l'API di ComfyUI
+                            if (window.comfyAPI && window.comfyAPI.api) {
+                                try {
+                                    scaledPath = window.comfyAPI.api.api.apiURL(data.path);
+                                } catch (e) { }
+                            }
+
+                            backgroundImage.src = scaledPath;
+                            backgroundImage.dataset.scaleFactor = data.scale || 1;
+                            backgroundImage.dataset.scaled = data.scaled || false;
+                            console.log(`[BoxBox] Image loaded - Scale: ${data.scale || 1}`);
+                        } else if (data.error) {
+                            console.warn(`[BoxBox] Scale error: ${data.error}, using original`);
+                            backgroundImage.src = imageUrl;
+                        }
+                        imageName.textContent = `Image: ${filename}`;
+                    })
+                    .catch(e => {
+                        console.error("[BoxBox] Error in scale fetch:", e);
+                        backgroundImage.src = imageUrl;
+                        imageName.textContent = `Image: ${filename}`;
+                    });
+            } else {
+                // Fallback for when filename param is missing
+                console.log("[RegionSelectorExt] No filename param, using imageUrl directly");
+                backgroundImage.src = imageUrl;
+            }
+        } catch (e) {
+            console.error("[RegionSelectorExt] URL parsing error:", e);
             backgroundImage.src = imageUrl;
         }
     }
@@ -865,10 +881,12 @@ function initializeCanvasSelector(container, imageUrl, previousMetadata = null) 
 
     return {
         getCoordinates: () => {
-            // Read the scale factor from backend (image was scaled for display)
-            const scaleFactor = parseFloat(backgroundImage.dataset.scaleFactor || "1");
+            // Calcola il fattore di scala combinato (Backend + Browser CSS)
+            const serverScale = parseFloat(backgroundImage.dataset.scaleFactor || "1");
+            const browserScale = backgroundImage.offsetWidth / (backgroundImage.naturalWidth || backgroundImage.offsetWidth);
+            const totalScale = serverScale * browserScale;
 
-            console.log(`[RegionSelector] Getting coordinates with scaleFactor: ${scaleFactor}`);
+            console.log(`[BoxBox] Getting coordinates - ServerScale: ${serverScale}, BrowserScale: ${browserScale.toFixed(3)}, Total: ${totalScale.toFixed(3)}`);
 
             const baseX1 = baseX;
             const baseY1 = baseY;
@@ -896,8 +914,7 @@ function initializeCanvasSelector(container, imageUrl, previousMetadata = null) 
             // REMOVED: BoxCrop backend already handles this conversion
             // Return display coordinates as-is, BoxCrop will divide by displayScaleFactor
 
-            console.log(`[RegionSelector] Display coords: (${Math.round(effectiveX1)}, ${Math.round(effectiveY1)}) to (${Math.round(effectiveX2)}, ${Math.round(effectiveY2)})`);
-            console.log(`[RegionSelector] Scale factor ${scaleFactor} will be handled by BoxCrop backend`);
+            console.log(`[BoxBox] Final coordinates: (${Math.round(effectiveX1)}, ${Math.round(effectiveY1)}) to (${Math.round(effectiveX2)}, ${Math.round(effectiveY2)})`);
 
             return {
                 x1: Math.round(effectiveX1),
@@ -906,7 +923,7 @@ function initializeCanvasSelector(container, imageUrl, previousMetadata = null) 
                 y2: Math.round(effectiveY2),
                 borderWidth: currentBorderWidth,
                 borderPosition: borderPosition,
-                displayScaleFactor: scaleFactor,
+                displayScaleFactor: totalScale,
             };
         },
         getState: () => ({
@@ -920,27 +937,35 @@ function initializeCanvasSelector(container, imageUrl, previousMetadata = null) 
 
 window.CanvasSelector = { initializeCanvasSelector };
 
+console.log("[BoxBox] Preparing to register extension...");
+
 app.registerExtension({
     name: "BoxBox.BoxSelectorExtension",
 
     async setup(app) {
-        console.log("[RegionSelectorExt] Setup called");
+        console.log("[BoxBox] Setup extension called");
     },
 
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
+        // Log every node to see what's happening
+        if (nodeData.name && nodeData.name.includes("Box")) {
+            console.log(`[BoxBox] Checking node: ${nodeData.name}`);
+        }
+
         if (nodeData.name !== "BoxSelector") return;
 
-        console.log("[RegionSelectorExt] Registering BoxSelector...");
+        console.log("[BoxBox] Found BoxSelector node! Adding button...");
 
         const onNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
             const r = onNodeCreated?.apply(this, arguments);
             const node = this;
 
-            console.log("[RegionSelectorExt] Node created, adding button...");
+            console.log("[BoxBox] Node instance created, attaching button widget...");
 
-            // Aggiungi bottone nativo ComfyUI
+            // Add native ComfyUI button
             this.addWidget("button", "📦 Select Box", null, () => {
+                console.log("[BoxBox] Button clicked!");
                 openRegionDialog(node, app);
             });
 
@@ -950,40 +975,53 @@ app.registerExtension({
 });
 
 /**
- * Recursively searches for an image filename by traversing the node chain backwards
- * @param {Object} node - Current node to search
- * @param {Object} app - ComfyUI app instance
- * @param {number} depth - Current recursion depth
- * @param {number} maxDepth - Maximum recursion depth to prevent infinite loops
- * @returns {string|null} - Image filename if found, null otherwise
+ * Recursively searches for image metadata by traversing the node chain backwards
+ * @returns {Object|null} - Image metadata {filename, type, subfolder} if found, null otherwise
  */
 function findImageInChain(node, app, depth = 0, maxDepth = 20) {
-    if (depth > maxDepth) {
-        console.warn("[RegionSelectorExt] Max depth reached in node chain search");
-        return null;
-    }
+    if (depth > maxDepth) return null;
 
-    console.log(`[RegionSelectorExt] Searching at depth ${depth}, node type:`, node.type);
+    console.log(`[RegionSelectorExt] Searching at depth ${depth}, node type: ${node.type} (${node.comfyClass})`);
 
-    // Check if this node has an "image" widget (like LoadImage)
-    if (node.widgets) {
-        const imageWidget = node.widgets.find(w => w.name === "image");
-        if (imageWidget && imageWidget.value) {
-            console.log(`[RegionSelectorExt] ✅ Found image at depth ${depth}:`, imageWidget.value);
-            return imageWidget.value;
+    // 1. Check if the node has preview images (standard ComfyUI way)
+    if (node.imgs && node.imgs.length > 0) {
+        const img = node.imgs[0];
+        // Ensure it's a real image and not just a placeholder from some nodes
+        if (img.filename && !img.filename.startsWith("$")) {
+            console.log(`[RegionSelectorExt] ✅ Found image in node.imgs at depth ${depth}:`, img);
+            return {
+                filename: img.filename,
+                type: img.type || "temp",
+                subfolder: img.subfolder || ""
+            };
         }
     }
 
-    // If not found, traverse backwards through IMAGE inputs
+    // 2. Check for common widgets that hold image names
+    if (node.widgets) {
+        // Look for any widget that might contain a filename
+        const imageWidget = node.widgets.find(w => w.name === "image" || w.name === "image_name");
+        if (imageWidget && imageWidget.value && typeof imageWidget.value === "string") {
+            // Check if it looks like a real filename (has extension) or a special ID
+            if (imageWidget.value.includes(".") || imageWidget.value.startsWith("$")) {
+                console.log(`[RegionSelectorExt] ✅ Found image widget at depth ${depth}:`, imageWidget.name, "=", imageWidget.value);
+                return {
+                    filename: imageWidget.value,
+                    type: "input", // Fallback, will be corrected for $ IDs later
+                    subfolder: ""
+                };
+            }
+        }
+    }
+
+    // 3. Traverse backwards through IMAGE inputs
     if (node.inputs && node.inputs.length > 0) {
         for (const input of node.inputs) {
-            // Look for IMAGE type inputs
             if (input.type === "IMAGE" && input.link !== undefined && input.link !== null) {
                 const link = app.graph.links[input.link];
                 if (link) {
                     const sourceNode = app.graph._nodes_by_id[link.origin_id];
                     if (sourceNode) {
-                        console.log(`[RegionSelectorExt] → Traversing to node: ${sourceNode.type}`);
                         const result = findImageInChain(sourceNode, app, depth + 1, maxDepth);
                         if (result) return result;
                     }
@@ -992,7 +1030,6 @@ function findImageInChain(node, app, depth = 0, maxDepth = 20) {
         }
     }
 
-    console.log(`[RegionSelectorExt] No image found at depth ${depth}`);
     return null;
 }
 
@@ -1001,57 +1038,80 @@ function findImageInChain(node, app, depth = 0, maxDepth = 20) {
  */
 async function openRegionDialog(node, app) {
     console.log("[RegionSelectorExt] Opening dialog...");
-    console.log("[RegionSelectorExt] Node inputs:", node.inputs);
-    console.log("[RegionSelectorExt] Node widgets:", node.widgets);
 
-    let imageName = null;
-    let imageUrl = null;
+    let imageInfo = null;
 
-    // Metodo 1: Se c'è un input collegato
-    if (node.inputs && node.inputs[0] && node.inputs[0].link !== undefined && node.inputs[0].link !== null) {
-        const imageInput = node.inputs[0];
-        const link = app.graph.links[imageInput.link];
-
+    // Search in the connected node chain
+    if (node.inputs && node.inputs[0]?.link != null) {
+        const link = app.graph.links[node.inputs[0].link];
         if (link) {
             const sourceNode = app.graph._nodes_by_id[link.origin_id];
-            console.log("[RegionSelectorExt] Source node found:", sourceNode);
-
-            // Use recursive search to find image through the node chain
-            imageName = findImageInChain(sourceNode, app);
-
-            if (imageName) {
-                console.log("[RegionSelectorExt] ✅ Image found through chain traversal:", imageName);
-            } else {
-                console.warn("[RegionSelectorExt] ⚠️ No image found in node chain");
-            }
+            imageInfo = findImageInChain(sourceNode, app);
         }
     }
 
-    // Metodo 2: Prova a prendere l'immagine dal widget del nodo stesso
-    if (!imageName) {
-        const imageWidget = node.widgets?.find((w) => w.name === "image");
-        if (imageWidget && imageWidget.value) {
-            imageName = imageWidget.value;
-            console.log("[RegionSelectorExt] Image from widget:", imageName);
-        }
+    // Fallback: Check the node itself
+    if (!imageInfo) {
+        imageInfo = findImageInChain(node, app);
     }
 
-    if (!imageName) {
-        alert("⚠️ Nessuna immagine collegata al nodo!\n\nCollega un'immagine dal nodo LoadImage.");
+    if (!imageInfo || !imageInfo.filename) {
+        alert("⚠️ No image found!\n\nPlease connect a node that shows an image (like LoadImage or PreviewBridge) and ensure it has executed at least once.");
         return;
     }
 
-    // Try to use ComfyUI's api helper for correct path
-    try {
-        imageUrl = api.apiURL(`/view?filename=${encodeURIComponent(imageName)}&type=input`);
-    } catch (e) {
-        console.warn("[RegionSelectorExt] api.apiURL not available, using fallback:", e);
-        imageUrl = `/view?filename=${encodeURIComponent(imageName)}&type=input`;
+    // SPECIAL HANDLING: Impact Pack PreviewBridge IDs ($...)
+    if (imageInfo.filename.startsWith("$")) {
+        console.log("[RegionSelectorExt] Detected PreviewBridge ID, attempting to resolve:", imageInfo.filename);
+        try {
+            const response = await fetch(`/impact/get/pb_id_image?id=${encodeURIComponent(imageInfo.filename)}`);
+            if (response.ok) {
+                const pbInfo = await response.json();
+                console.log("[RegionSelectorExt] Resolved PreviewBridge ID:", pbInfo);
+                imageInfo = {
+                    filename: pbInfo.filename,
+                    type: pbInfo.type || "temp",
+                    subfolder: pbInfo.subfolder || ""
+                };
+            } else {
+                console.warn("[RegionSelectorExt] Failed to resolve PreviewBridge ID via API");
+            }
+        } catch (e) {
+            console.error("[RegionSelectorExt] Error resolving PreviewBridge ID via API:", e);
+        }
     }
-    console.log("[RegionSelectorExt] Image URL:", imageUrl);
 
-    // Crea il dialog
-    const dialog = new ComfyDialog();
+    // Construct URL - use direct path /view to avoid /api/view ambiguity
+    const params = new URLSearchParams();
+    params.append("filename", imageInfo.filename);
+    params.append("type", imageInfo.type || "input");
+    if (imageInfo.subfolder) params.append("subfolder", imageInfo.subfolder);
+
+    // Use ROOT /view as standard ComfyUI does
+    const imageUrl = `/view?${params.toString()}`;
+    console.log("[RegionSelectorExt] Final Image URL:", imageUrl);
+
+    // Crea il dialog usando la API moderna o il fallback sicuro
+    let dialog;
+    try {
+        if (window.comfyAPI && window.comfyAPI.ui && window.comfyAPI.ui.ComfyDialog) {
+            dialog = new window.comfyAPI.ui.ComfyDialog();
+        } else {
+            // Fallback se siamo su una versione vecchia o il bus bridge è attivo
+            const { ComfyDialog } = await import("../../scripts/ui.js");
+            dialog = new ComfyDialog();
+        }
+    } catch (e) {
+        console.error("[BoxBox] Failed to create dialog via modern API, trying fallback:", e);
+        // Fallback estremo: molti nodi usano app.ui.dialog o simili
+        if (app.ui && app.ui.dialog) {
+            dialog = app.ui.dialog;
+        } else {
+            alert("Error: ComfyUI Dialog system not available. Please check console (F12).");
+            return;
+        }
+    }
+
     dialog.element.style.width = "95vw";
     dialog.element.style.height = "95vh";
     dialog.element.style.maxWidth = "none";
@@ -1210,7 +1270,7 @@ async function openRegionDialog(node, app) {
 
                     <!-- Image info -->
                     <div class="control-group" style="margin-bottom: 20px;">
-                        <small id="image-name" style="display: block; font-size: 12px; color: #64748b;">Image: ${imageName}</small>
+                        <small id="image-name" style="display: block; font-size: 12px; color: #64748b;">Image: ${imageInfo.filename}</small>
                     </div>
 
                     <!-- Aspect Ratio Selector -->

@@ -27,6 +27,19 @@ This is an improved fork of the original [BoxBox](https://github.com/mercu-lore/
    - Now works with processing nodes (Brightness, Blur, etc.) between LoadImage and BoxSelector
    - Searches up to 20 levels deep in the node graph
 
+5. **NumPy 2.0 Compatibility**
+   - Updated backend logic with explicit casting (`np.uint8`, `np.float32`)
+   - Fixed binary incompatibility issues in coordinate processing
+
+6. **ComfyUI v0.12.2+ (Modern API) Support**
+   - Re-engineered frontend to use the modern `window.comfyAPI` system
+   - Eliminated "Legacy API" deprecation warnings
+   - Improved dialog instantiation with robust fallback mechanisms
+
+7. **Adaptive Window Scaling**
+   - Fixed coordinate misalignment when the browser window is resized
+   - System now dynamically calculates total scale (Server Scale * Browser CSS Scale)
+
 ### 🆕 New Features
 
 1. **Aspect Ratio Memory**
