@@ -1,20 +1,16 @@
-/**
- * Region Selector Extension - Integrazione nativa con ComfyUI Dialog
- * Mantiene il bottone nel nodo e apre un dialog nativo
- */
-
+// BoxBox Extension - Modernizada para ComfyUI v1.0 / v0.12.2+
 import { app } from "../../scripts/app.js";
-import { ComfyDialog } from "../../scripts/ui.js";
 
-console.log("[RegionSelectorExt] Loading extension...");
+console.log("[BoxBox] Loading extension (Modern API)...");
 
 /**
  * Canvas Selector - Funzionalità complete di selezione rettangoli
  * Basato sul codice di canva_html
  */
 
-function initializeCanvasSelector(container, imageUrl) {
+function initializeCanvasSelector(container, imageUrl, previousMetadata = null) {
     console.log("[CanvasSelector] Initializing with image:", imageUrl);
+    console.log("[CanvasSelector] Previous metadata:", previousMetadata);
 
     // Riferimenti agli elementi DOM (cercati dentro il container)
     const canvasContainer = container.querySelector('#canvas-container');
@@ -71,35 +67,73 @@ function initializeCanvasSelector(container, imageUrl) {
     // Ridimensionamento immagini > 1024px lato backend
     // ========================================================
     if (imageUrl) {
-        const filename = imageUrl.split('/').pop();
+        // Parse URL parameters
+        try {
+            // Create a dummy base URL to handle relative URLs comfortably
+            const checkUrl = new URL(imageUrl, document.baseURI);
+            const params = new URLSearchParams(checkUrl.search);
 
-        fetch("/region_selector/scale", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ filename })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.path) {
-                backgroundImage.src = data.path;
-                backgroundImage.dataset.scaleFactor = data.scale || 1;
-                backgroundImage.dataset.scaled = data.scaled || false;
-                console.log(`[RegionSelectorExt] Immagine caricata - Scale: ${data.scale || 1}`);
-            } else if (data.error) {
-                console.warn(`[RegionSelectorExt] Scale error: ${data.error}`);
+            const filename = params.get("filename");
+            const type = params.get("type") || "input";
+            const subfolder = params.get("subfolder") || "";
+
+            if (filename) {
+                console.log(`[BoxBox] Requesting scale for: ${filename} (type: ${type}, subfolder: ${subfolder})`);
+
+                // Usare fetch diretto con configurazione robusta
+                fetch("/region_selector/scale", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Accept": "application/json"
+                    },
+                    body: JSON.stringify({
+                        filename: String(filename),
+                        type: String(type),
+                        subfolder: String(subfolder)
+                    })
+                })
+                    .then(async res => {
+                        if (!res.ok) {
+                            const errText = await res.text();
+                            throw new Error(`Server returned ${res.status}: ${errText}`);
+                        }
+                        return res.json();
+                    })
+                    .then(data => {
+                        if (data.path) {
+                            let scaledPath = data.path;
+                            // Assicurati che il path sia convertito correttamente per l'API di ComfyUI
+                            if (window.comfyAPI && window.comfyAPI.api) {
+                                try {
+                                    scaledPath = window.comfyAPI.api.api.apiURL(data.path);
+                                } catch (e) { }
+                            }
+
+                            backgroundImage.src = scaledPath;
+                            backgroundImage.dataset.scaleFactor = data.scale || 1;
+                            backgroundImage.dataset.scaled = data.scaled || false;
+                            console.log(`[BoxBox] Image loaded - Scale: ${data.scale || 1}`);
+                        } else if (data.error) {
+                            console.warn(`[BoxBox] Scale error: ${data.error}, using original`);
+                            backgroundImage.src = imageUrl;
+                        }
+                        imageName.textContent = `Image: ${filename}`;
+                    })
+                    .catch(e => {
+                        console.error("[BoxBox] Error in scale fetch:", e);
+                        backgroundImage.src = imageUrl;
+                        imageName.textContent = `Image: ${filename}`;
+                    });
+            } else {
+                // Fallback for when filename param is missing
+                console.log("[RegionSelectorExt] No filename param, using imageUrl directly");
                 backgroundImage.src = imageUrl;
-                backgroundImage.dataset.scaleFactor = 1;
-                backgroundImage.dataset.scaled = false;
             }
-            imageName.textContent = `Image: ${filename}`;
-        })
-        .catch(e => {
-            console.error("[RegionSelectorExt] Errore scale:", e);
+        } catch (e) {
+            console.error("[RegionSelectorExt] URL parsing error:", e);
             backgroundImage.src = imageUrl;
-            backgroundImage.dataset.scaleFactor = 1;
-            backgroundImage.dataset.scaled = false;
-            imageName.textContent = `Image: ${filename}`;
-        });
+        }
     }
 
     // Disabilita drag dell'immagine
@@ -124,22 +158,34 @@ function initializeCanvasSelector(container, imageUrl) {
     const aspectRatioSelect = container.querySelector('#aspect-ratio-select');
     const aspectRatioHint = container.querySelector('#aspect-ratio-hint');
 
+    // Load saved aspect ratio from localStorage
+    const savedAspectRatio = localStorage.getItem('boxSelector_aspectRatio');
+    if (savedAspectRatio && aspectRatioSelect) {
+        aspectRatioSelect.value = savedAspectRatio;
+        aspectRatioMode = savedAspectRatio;
+        console.log(`[RegionSelectorExt] Loaded saved aspect ratio: ${savedAspectRatio}`);
+    }
+
     if (aspectRatioSelect) {
         aspectRatioSelect.addEventListener('change', (e) => {
             aspectRatioMode = e.target.value;
 
+            // Save to localStorage
+            localStorage.setItem('boxSelector_aspectRatio', aspectRatioMode);
+            console.log(`[RegionSelectorExt] Saved aspect ratio: ${aspectRatioMode}`);
+
             // Calcola valore numerico
             const ratioMap = {
                 "free": null,
-                "1:1": 1/1,
-                "3:4": 3/4,
-                "5:8": 5/8,
-                "9:16": 9/16,
-                "9:21": 9/21,
-                "4:3": 4/3,
-                "3:2": 3/2,
-                "16:9": 16/9,
-                "21:9": 21/9,
+                "1:1": 1 / 1,
+                "3:4": 3 / 4,
+                "5:8": 5 / 8,
+                "9:16": 9 / 16,
+                "9:21": 9 / 21,
+                "4:3": 4 / 3,
+                "3:2": 3 / 2,
+                "16:9": 16 / 9,
+                "21:9": 21 / 9,
             };
 
             aspectRatioValue = ratioMap[aspectRatioMode];
@@ -162,6 +208,32 @@ function initializeCanvasSelector(container, imageUrl) {
                 adjustRectangleToAspectRatio();
             }
         });
+
+        // Initialize aspectRatioValue and hint based on loaded or default value
+        const ratioMap = {
+            "free": null,
+            "1:1": 1 / 1,
+            "3:4": 3 / 4,
+            "5:8": 5 / 8,
+            "9:16": 9 / 16,
+            "9:21": 9 / 21,
+            "4:3": 4 / 3,
+            "3:2": 3 / 2,
+            "16:9": 16 / 9,
+            "21:9": 21 / 9,
+        };
+        aspectRatioValue = ratioMap[aspectRatioMode];
+
+        if (aspectRatioMode === "free") {
+            aspectRatioHint.textContent = "Disegno libero - il ratio verrà calcolato";
+            aspectRatioHint.style.color = "#64748b";
+            aspectRatioHint.style.fontWeight = "normal";
+        } else {
+            aspectRatioHint.textContent = `Rettangolo vincolato a ${aspectRatioMode}`;
+            aspectRatioHint.style.color = "#16a34a";
+            aspectRatioHint.style.fontWeight = "600";
+        }
+        console.log(`[AspectRatio] Initialized - Mode: ${aspectRatioMode}, Value: ${aspectRatioValue}`);
     }
 
     // ========================================================
@@ -181,7 +253,7 @@ function initializeCanvasSelector(container, imageUrl) {
         const maxCurrent = Math.max(naturalW, naturalH);
 
         if (maxCurrent <= maxDim) {
-            alert("✓ Immagine già piccola!");
+            console.log("[FixImage] Image is already small enough, no scaling needed");
             return;
         }
 
@@ -258,6 +330,69 @@ function initializeCanvasSelector(container, imageUrl) {
         }
     }, 500);
 
+    // Restore previous selection if metadata exists
+    if (previousMetadata) {
+        setTimeout(() => {
+            try {
+                const metadata = JSON.parse(previousMetadata);
+                const scaleFactor = parseFloat(backgroundImage.dataset.scaleFactor || "1");
+
+                // Check if we have valid coordinates
+                if (metadata.x1 !== undefined && metadata.y1 !== undefined &&
+                    metadata.x2 !== undefined && metadata.y2 !== undefined &&
+                    metadata.selected) {
+
+                    console.log("[CanvasSelector] Restoring previous selection:", metadata);
+
+                    // Coordinates in metadata are in display space, use them directly
+                    const x1 = metadata.x1;
+                    const y1 = metadata.y1;
+                    const x2 = metadata.x2;
+                    const y2 = metadata.y2;
+
+                    // Calculate base position and size
+                    baseX = Math.min(x1, x2);
+                    baseY = Math.min(y1, y2);
+                    baseWidth = Math.abs(x2 - x1);
+                    baseHeight = Math.abs(y2 - y1);
+
+                    // Create the rectangle
+                    currentRectangle = document.createElement('div');
+                    currentRectangle.className = 'rectangle complete';
+
+                    if (borderPosition === 'outside') {
+                        currentRectangle.classList.add('border-outside');
+                        currentRectangle.style.outlineWidth = currentBorderWidth + 'px';
+                        currentRectangle.style.outlineStyle = 'solid';
+                        currentRectangle.style.borderWidth = '0px';
+                    } else {
+                        currentRectangle.classList.add('border-inside');
+                        currentRectangle.style.borderWidth = currentBorderWidth + 'px';
+                    }
+
+                    currentRectangle.style.left = baseX + 'px';
+                    currentRectangle.style.top = baseY + 'px';
+                    currentRectangle.style.width = baseWidth + 'px';
+                    currentRectangle.style.height = baseHeight + 'px';
+
+                    canvasContainer.appendChild(currentRectangle);
+                    rectangleExists = true;
+                    canvasContainer.classList.add('drawing-disabled');
+                    canvasContainer.style.cursor = 'default';
+                    resetBtn.disabled = false;
+                    dimensionsInfo.style.display = 'block';
+
+                    addResizeHandles();
+                    updateAllDimensions();
+
+                    console.log("[CanvasSelector] Previous selection restored successfully");
+                }
+            } catch (e) {
+                console.warn("[CanvasSelector] Failed to restore previous selection:", e);
+            }
+        }, 600); // Wait a bit longer than the auto-fix to ensure everything is ready
+    }
+
     // Mouse down - inizio disegno o drag
     canvasContainer.addEventListener('mousedown', (e) => {
         // Se il rettangolo esiste e clicchi su di esso (non su un handle), inizia il drag
@@ -284,22 +419,9 @@ function initializeCanvasSelector(container, imageUrl) {
         currentRectangle = document.createElement('div');
         currentRectangle.className = 'rectangle';
 
-        // Se sei in modalità vincolata, resetta a free (l'utente sta facendo una nuova selezione)
-        if (aspectRatioMode !== "free") {
-            const aspectRatioSelect = container.querySelector('#aspect-ratio-select');
-            if (aspectRatioSelect) {
-                aspectRatioSelect.value = "free";
-                aspectRatioMode = "free";
-                aspectRatioValue = null;
-                const aspectRatioHint = container.querySelector('#aspect-ratio-hint');
-                if (aspectRatioHint) {
-                    aspectRatioHint.textContent = "Disegno libero - il ratio verrà calcolato";
-                    aspectRatioHint.style.color = "#64748b";
-                    aspectRatioHint.style.fontWeight = "normal";
-                }
-                console.log("[AspectRatio] Reset to FREE mode for new selection");
-            }
-        }
+        // Keep the aspect ratio locked if it was set
+        // (removed auto-reset to 'free' mode so it remembers user preference)
+
 
         if (borderPosition === 'outside') {
             currentRectangle.classList.add('border-outside');
@@ -394,7 +516,7 @@ function initializeCanvasSelector(container, imageUrl) {
             const deltaX = e.clientX - startX;
             const deltaY = e.clientY - startY;
 
-            switch(resizingEdge) {
+            switch (resizingEdge) {
                 case 'bottom-right':
                     let brNewWidth = rectStartWidth + deltaX;
                     let brNewHeight = rectStartHeight + deltaY;
@@ -703,15 +825,15 @@ function initializeCanvasSelector(container, imageUrl) {
         if (aspectRatioMode === "free") {
             // Lista aspect ratio standard
             const standardRatios = [
-                { value: 21/9, label: "21:9 Landscape", display: "21:9" },
-                { value: 16/9, label: "16:9 Landscape", display: "16:9" },
-                { value: 3/2, label: "3:2 Landscape", display: "3:2" },
-                { value: 4/3, label: "4:3 Landscape", display: "4:3" },
-                { value: 1/1, label: "1:1 Square", display: "1:1" },
-                { value: 3/4, label: "3:4 Portrait", display: "3:4" },
-                { value: 5/8, label: "5:8 Portrait", display: "5:8" },
-                { value: 9/16, label: "9:16 Portrait", display: "9:16" },
-                { value: 9/21, label: "9:21 Portrait", display: "9:21" },
+                { value: 21 / 9, label: "21:9 Landscape", display: "21:9" },
+                { value: 16 / 9, label: "16:9 Landscape", display: "16:9" },
+                { value: 3 / 2, label: "3:2 Landscape", display: "3:2" },
+                { value: 4 / 3, label: "4:3 Landscape", display: "4:3" },
+                { value: 1 / 1, label: "1:1 Square", display: "1:1" },
+                { value: 3 / 4, label: "3:4 Portrait", display: "3:4" },
+                { value: 5 / 8, label: "5:8 Portrait", display: "5:8" },
+                { value: 9 / 16, label: "9:16 Portrait", display: "9:16" },
+                { value: 9 / 21, label: "9:21 Portrait", display: "9:21" },
             ];
 
             // Trova il più vicino
@@ -759,8 +881,12 @@ function initializeCanvasSelector(container, imageUrl) {
 
     return {
         getCoordinates: () => {
-            // Leggi il fattore di scala salvato dal backend
-            const scaleFactor = parseFloat(backgroundImage.dataset.scaleFactor || "1");
+            // Calcola il fattore di scala combinato (Backend + Browser CSS)
+            const serverScale = parseFloat(backgroundImage.dataset.scaleFactor || "1");
+            const browserScale = backgroundImage.offsetWidth / (backgroundImage.naturalWidth || backgroundImage.offsetWidth);
+            const totalScale = serverScale * browserScale;
+
+            console.log(`[BoxBox] Getting coordinates - ServerScale: ${serverScale}, BrowserScale: ${browserScale.toFixed(3)}, Total: ${totalScale.toFixed(3)}`);
 
             const baseX1 = baseX;
             const baseY1 = baseY;
@@ -784,6 +910,12 @@ function initializeCanvasSelector(container, imageUrl) {
                 effectiveY2 = Math.max(effectiveY1 + 1, baseY2 - currentBorderWidth);
             }
 
+            // Convert coordinates from scaled space back to original image space
+            // REMOVED: BoxCrop backend already handles this conversion
+            // Return display coordinates as-is, BoxCrop will divide by displayScaleFactor
+
+            console.log(`[BoxBox] Final coordinates: (${Math.round(effectiveX1)}, ${Math.round(effectiveY1)}) to (${Math.round(effectiveX2)}, ${Math.round(effectiveY2)})`);
+
             return {
                 x1: Math.round(effectiveX1),
                 y1: Math.round(effectiveY1),
@@ -791,7 +923,7 @@ function initializeCanvasSelector(container, imageUrl) {
                 y2: Math.round(effectiveY2),
                 borderWidth: currentBorderWidth,
                 borderPosition: borderPosition,
-                displayScaleFactor: displayScaleFactor,
+                displayScaleFactor: totalScale,
             };
         },
         getState: () => ({
@@ -805,27 +937,35 @@ function initializeCanvasSelector(container, imageUrl) {
 
 window.CanvasSelector = { initializeCanvasSelector };
 
+console.log("[BoxBox] Preparing to register extension...");
+
 app.registerExtension({
     name: "BoxBox.BoxSelectorExtension",
 
     async setup(app) {
-        console.log("[RegionSelectorExt] Setup called");
+        console.log("[BoxBox] Setup extension called");
     },
 
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
+        // Log every node to see what's happening
+        if (nodeData.name && nodeData.name.includes("Box")) {
+            console.log(`[BoxBox] Checking node: ${nodeData.name}`);
+        }
+
         if (nodeData.name !== "BoxSelector") return;
 
-        console.log("[RegionSelectorExt] Registering BoxSelector...");
+        console.log("[BoxBox] Found BoxSelector node! Adding button...");
 
         const onNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
             const r = onNodeCreated?.apply(this, arguments);
             const node = this;
 
-            console.log("[RegionSelectorExt] Node created, adding button...");
+            console.log("[BoxBox] Node instance created, attaching button widget...");
 
-            // Aggiungi bottone nativo ComfyUI
+            // Add native ComfyUI button
             this.addWidget("button", "📦 Select Box", null, () => {
+                console.log("[BoxBox] Button clicked!");
                 openRegionDialog(node, app);
             });
 
@@ -835,62 +975,143 @@ app.registerExtension({
 });
 
 /**
- * Apre il dialog del selettore di regioni
+ * Recursively searches for image metadata by traversing the node chain backwards
+ * @returns {Object|null} - Image metadata {filename, type, subfolder} if found, null otherwise
  */
-async function openRegionDialog(node, app) {
-    console.log("[RegionSelectorExt] Opening dialog...");
-    console.log("[RegionSelectorExt] Node inputs:", node.inputs);
-    console.log("[RegionSelectorExt] Node widgets:", node.widgets);
+function findImageInChain(node, app, depth = 0, maxDepth = 20) {
+    if (depth > maxDepth) return null;
 
-    let imageName = null;
-    let imageUrl = null;
+    console.log(`[RegionSelectorExt] Searching at depth ${depth}, node type: ${node.type} (${node.comfyClass})`);
 
-    // Metodo 1: Se c'è un input collegato
-    if (node.inputs && node.inputs[0] && node.inputs[0].link !== undefined && node.inputs[0].link !== null) {
-        const imageInput = node.inputs[0];
-        const link = app.graph.links[imageInput.link];
+    // 1. Check if the node has preview images (standard ComfyUI way)
+    if (node.imgs && node.imgs.length > 0) {
+        const img = node.imgs[0];
+        // Ensure it's a real image and not just a placeholder from some nodes
+        if (img.filename && !img.filename.startsWith("$")) {
+            console.log(`[RegionSelectorExt] ✅ Found image in node.imgs at depth ${depth}:`, img);
+            return {
+                filename: img.filename,
+                type: img.type || "temp",
+                subfolder: img.subfolder || ""
+            };
+        }
+    }
 
-        if (link) {
-            const sourceNode = app.graph._nodes_by_id[link.origin_id];
-            console.log("[RegionSelectorExt] Source node found:", sourceNode);
-
-            // Esegui il nodo sorgente per ottenere l'immagine
-            try {
-                await executeSourceNode(sourceNode, app);
-
-                // Dopo l'esecuzione, prova a prendere il filename dal nodo sorgente
-                if (sourceNode.widgets) {
-                    const filenameWidget = sourceNode.widgets.find(w => w.name === "image");
-                    if (filenameWidget && filenameWidget.value) {
-                        imageName = filenameWidget.value;
-                        console.log("[RegionSelectorExt] Image from source node:", imageName);
-                    }
-                }
-            } catch (e) {
-                console.error("[RegionSelectorExt] Error executing source node:", e);
+    // 2. Check for common widgets that hold image names
+    if (node.widgets) {
+        // Look for any widget that might contain a filename
+        const imageWidget = node.widgets.find(w => w.name === "image" || w.name === "image_name");
+        if (imageWidget && imageWidget.value && typeof imageWidget.value === "string") {
+            // Check if it looks like a real filename (has extension) or a special ID
+            if (imageWidget.value.includes(".") || imageWidget.value.startsWith("$")) {
+                console.log(`[RegionSelectorExt] ✅ Found image widget at depth ${depth}:`, imageWidget.name, "=", imageWidget.value);
+                return {
+                    filename: imageWidget.value,
+                    type: "input", // Fallback, will be corrected for $ IDs later
+                    subfolder: ""
+                };
             }
         }
     }
 
-    // Metodo 2: Prova a prendere l'immagine dal widget del nodo stesso
-    if (!imageName) {
-        const imageWidget = node.widgets?.find((w) => w.name === "image");
-        if (imageWidget && imageWidget.value) {
-            imageName = imageWidget.value;
-            console.log("[RegionSelectorExt] Image from widget:", imageName);
+    // 3. Traverse backwards through IMAGE inputs
+    if (node.inputs && node.inputs.length > 0) {
+        for (const input of node.inputs) {
+            if (input.type === "IMAGE" && input.link !== undefined && input.link !== null) {
+                const link = app.graph.links[input.link];
+                if (link) {
+                    const sourceNode = app.graph._nodes_by_id[link.origin_id];
+                    if (sourceNode) {
+                        const result = findImageInChain(sourceNode, app, depth + 1, maxDepth);
+                        if (result) return result;
+                    }
+                }
+            }
         }
     }
 
-    if (!imageName) {
-        alert("⚠️ Nessuna immagine collegata al nodo!\n\nCollega un'immagine dal nodo LoadImage.");
+    return null;
+}
+
+/**
+ * Apre il dialog del selettore di regioni
+ */
+async function openRegionDialog(node, app) {
+    console.log("[RegionSelectorExt] Opening dialog...");
+
+    let imageInfo = null;
+
+    // Search in the connected node chain
+    if (node.inputs && node.inputs[0]?.link != null) {
+        const link = app.graph.links[node.inputs[0].link];
+        if (link) {
+            const sourceNode = app.graph._nodes_by_id[link.origin_id];
+            imageInfo = findImageInChain(sourceNode, app);
+        }
+    }
+
+    // Fallback: Check the node itself
+    if (!imageInfo) {
+        imageInfo = findImageInChain(node, app);
+    }
+
+    if (!imageInfo || !imageInfo.filename) {
+        alert("⚠️ No image found!\n\nPlease connect a node that shows an image (like LoadImage or PreviewBridge) and ensure it has executed at least once.");
         return;
     }
 
-    imageUrl = `/view?filename=${imageName}&type=input`;
-    console.log("[RegionSelectorExt] Image URL:", imageUrl);
+    // SPECIAL HANDLING: Impact Pack PreviewBridge IDs ($...)
+    if (imageInfo.filename.startsWith("$")) {
+        console.log("[RegionSelectorExt] Detected PreviewBridge ID, attempting to resolve:", imageInfo.filename);
+        try {
+            const response = await fetch(`/impact/get/pb_id_image?id=${encodeURIComponent(imageInfo.filename)}`);
+            if (response.ok) {
+                const pbInfo = await response.json();
+                console.log("[RegionSelectorExt] Resolved PreviewBridge ID:", pbInfo);
+                imageInfo = {
+                    filename: pbInfo.filename,
+                    type: pbInfo.type || "temp",
+                    subfolder: pbInfo.subfolder || ""
+                };
+            } else {
+                console.warn("[RegionSelectorExt] Failed to resolve PreviewBridge ID via API");
+            }
+        } catch (e) {
+            console.error("[RegionSelectorExt] Error resolving PreviewBridge ID via API:", e);
+        }
+    }
 
-    // Crea il dialog
-    const dialog = new ComfyDialog();
+    // Construct URL - use direct path /view to avoid /api/view ambiguity
+    const params = new URLSearchParams();
+    params.append("filename", imageInfo.filename);
+    params.append("type", imageInfo.type || "input");
+    if (imageInfo.subfolder) params.append("subfolder", imageInfo.subfolder);
+
+    // Use ROOT /view as standard ComfyUI does
+    const imageUrl = `/view?${params.toString()}`;
+    console.log("[RegionSelectorExt] Final Image URL:", imageUrl);
+
+    // Crea il dialog usando la API moderna o il fallback sicuro
+    let dialog;
+    try {
+        if (window.comfyAPI && window.comfyAPI.ui && window.comfyAPI.ui.ComfyDialog) {
+            dialog = new window.comfyAPI.ui.ComfyDialog();
+        } else {
+            // Fallback se siamo su una versione vecchia o il bus bridge è attivo
+            const { ComfyDialog } = await import("../../scripts/ui.js");
+            dialog = new ComfyDialog();
+        }
+    } catch (e) {
+        console.error("[BoxBox] Failed to create dialog via modern API, trying fallback:", e);
+        // Fallback estremo: molti nodi usano app.ui.dialog o simili
+        if (app.ui && app.ui.dialog) {
+            dialog = app.ui.dialog;
+        } else {
+            alert("Error: ComfyUI Dialog system not available. Please check console (F12).");
+            return;
+        }
+    }
+
     dialog.element.style.width = "95vw";
     dialog.element.style.height = "95vh";
     dialog.element.style.maxWidth = "none";
@@ -1049,7 +1270,7 @@ async function openRegionDialog(node, app) {
 
                     <!-- Image info -->
                     <div class="control-group" style="margin-bottom: 20px;">
-                        <small id="image-name" style="display: block; font-size: 12px; color: #64748b;">Image: ${imageName}</small>
+                        <small id="image-name" style="display: block; font-size: 12px; color: #64748b;">Image: ${imageInfo.filename}</small>
                     </div>
 
                     <!-- Aspect Ratio Selector -->
@@ -1142,7 +1363,9 @@ async function openRegionDialog(node, app) {
                         max-width: 90%;
                         max-height: 90%;
                     ">
-                        <img src="${imageUrl}" alt="Region Selector" id="background-image" style="
+                        <img src="${imageUrl}" alt="Region Selector" id="background-image" 
+                            onerror="console.error('[RegionSelector] Failed to load image:', this.src); this.alt = 'Failed to load image. Check console for details.';"
+                            style="
                             display: block;
                             max-width: 100%;
                             max-height: 100%;
@@ -1204,7 +1427,11 @@ async function openRegionDialog(node, app) {
             attempts++;
             if (window.CanvasSelector) {
                 clearInterval(waitForCanvasSelector);
-                const selector = window.CanvasSelector.initializeCanvasSelector(container, imageUrl);
+                // Get previous metadata from node widget if it exists
+                const metadataWidget = node.widgets?.find((w) => w.name === "box_metadata");
+                const previousMetadata = metadataWidget?.value || null;
+
+                const selector = window.CanvasSelector.initializeCanvasSelector(container, imageUrl, previousMetadata);
 
                 // Aggiorna il confirm button per usare le coordinate reali
                 confirmBtn.onclick = () => {

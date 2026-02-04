@@ -107,38 +107,31 @@ class BoxReinsertNode:
         crop_width = box_x_end - box_x_start
         crop_height = box_y_end - box_y_start
 
-        # Converti immagini a PIL
-        original_np = (original_image[0].cpu().numpy() * 255).astype(np.uint8)
+        # Converti immagini a PIL con casting esplicito
+        # original_image es (B, H, W, C)
+        original_np = (original_image[0].detach().cpu().numpy() * 255).round().astype(np.uint8)
         original_pil = Image.fromarray(original_np)
 
-        generated_np = (generated_image[0].cpu().numpy() * 255).astype(np.uint8)
+        generated_np = (generated_image[0].detach().cpu().numpy() * 255).round().astype(np.uint8)
         generated_pil = Image.fromarray(generated_np)
 
         print(f"[BoxReinsertNode] Generated image size: {generated_pil.size}")
         print(f"[BoxReinsertNode] Target crop size: {crop_width}x{crop_height}")
         print(f"[BoxReinsertNode] Use resize: {use_resize}")
 
-        # Step 1: Ridimensiona solo se resize_metadata è fornito
+        # Step 1: Ridimensiona
         if use_resize:
-            # Annulla il resize fatto da BoxResize
-            print(f"[BoxReinsertNode] Resizing generated image back to crop dimensions...")
             generated_resized = generated_pil.resize((crop_width, crop_height), Image.Resampling.LANCZOS)
-            print(f"[BoxReinsertNode] Generated image resized from {generated_pil.size} to {generated_resized.size}")
         else:
-            # Bypassa il resize e usa direttamente l'immagine generata
             generated_resized = generated_pil
-            print(f"[BoxReinsertNode] Bypassing resize, using generated image as-is")
 
         # Step 2: Rimetti nel punto originale
-        # Crea una copia dell'immagine originale
         final_image = original_pil.copy()
-
-        # Incolla l'immagine generata nel punto corretto
         final_image.paste(generated_resized, (box_x_start, box_y_start))
 
-        # Converti back a tensor
-        final_np = np.array(final_image).astype(np.float32) / 255.0
-        final_tensor = torch.from_numpy(final_np).unsqueeze(0)
+        # Converti back a tensor con casting sicuro per NumPy 2.0
+        final_np_array = np.array(final_image, dtype=np.float32) / 255.0
+        final_tensor = torch.from_numpy(final_np_array).unsqueeze(0)
 
         # Assicurati che il tensor abbia le giuste dimensioni
         channels = original_image.shape[3]
